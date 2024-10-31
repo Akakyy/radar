@@ -9,6 +9,33 @@ from typing import List, Tuple,Literal
 
 
 @dataclass
+class Polygon:
+    id: int
+    vertices: List[Tuple[float, float]]  # List of vertices
+    color: Tuple[float, float, float] = (0.7, 0.7, 0.7)  # Light grey color
+    
+
+class PolygonManager:
+    def __init__(self):
+        self.polygons: List[Polygon] = []
+        self.next_number: int = 1
+    
+    def add_polygon(self, vertices: List[Tuple[float, float]]):
+        polygon = Polygon(self.next_number, vertices)
+        self.polygons.append(polygon)
+        self.next_number += 1  # Increment after adding the polygon
+
+    def remove_polygon(self, number: int) -> bool:
+        for polygon in self.polygons:
+            if polygon.id == number:
+                self.polygons.remove(polygon)
+                return True
+        return False  # Return False if polygon with given number does not exist
+
+    def get_polygons(self) -> List[Polygon]:
+        return self.polygons
+
+@dataclass
 class MovingObject:
     pos: List[float]
     velocity: List[float]
@@ -75,6 +102,16 @@ class MovingObject:
 
 class Radar:
     def __init__(self, width=800, height=800):
+        
+        self.border_radius = 1.9
+        self.polygon_manager = PolygonManager()
+        self.k = 3  # Minimum number of sides
+        self.g = 8  # Maximum number of sides
+        self.n = 1  # Minimum number of polygons
+        self.m = 5  # Maximum number of polygons
+        
+        # Generate random polygons on initialization
+        self.generate_random_polygons()
         self.moving_objects_dict: Dict[int, MovingObject] = {}  # Dictionary to hold objects by ID
 
         pygame.init()
@@ -96,7 +133,6 @@ class Radar:
         self.angle = 0
         self.radar_speed = 5.0
         self.center_radius = 0.3
-        self.border_radius = 1.9
         self.moving_objects: List[MovingObject] = []
         self.last_spawn_time = time.time()
         self.spawn_delay = 1.0
@@ -106,6 +142,13 @@ class Radar:
         self.fade_in_duration = 0.5    # Duration for object to fade in after sweep
         self.visibility_duration = 2.0  # How long object stays visible after sweep
     
+    def generate_random_polygons(self):
+        num_polygons = random.randint(self.n, self.m)
+        for i in range(num_polygons):
+            center = self.generate_border_point_inside_radar()
+            vertices = self.create_random_polygon(i + 1, center)  # Pass the ID (1-based)
+            self.polygon_manager.add_polygon(vertices.vertices)  # Add the VERTICES, not the Polygon object
+                
     def set_sector_angle(self, angle: float):
        """Set the angular sector width in degrees."""
        self.sector_angle_degrees = angle
@@ -114,6 +157,63 @@ class Radar:
         """Generate random speed factor between 0.5 and 2.0"""
         return random.uniform(0.05, 0.1)
 
+    def create_random_polygon(self, polygon_id: int, center: Tuple[float, float]) -> Polygon:
+        """Create a random convex polygon with a maximum angle."""
+        num_sides = random.randint(3, 8)  # Randomly choose the number of sides
+        angle_offset = random.uniform(0, 90)  # Offset for the polygon's rotation
+        angle_step = 90 / num_sides  # Maximum angle step
+        
+        vertices = []
+        for i in range(num_sides):
+            angle = angle_offset + i * angle_step
+            rad_angle = math.radians(angle)
+            radius = random.uniform(0.2, 0.5)  # Random distance from center
+            x = center[0] + radius * math.cos(rad_angle)
+            y = center[1] + radius * math.sin(rad_angle)
+            vertices.append((x, y))
+        
+        return Polygon(id=polygon_id, vertices=vertices)
+
+    def draw_polygon(self, polygon: Polygon):
+        """Draw a filled polygon."""
+        # Add error checking
+        if not isinstance(polygon.vertices, list):
+            print(f"Error: Polygon {polygon.id} has invalid vertices")
+            return
+        
+        if len(polygon.vertices) < 3:
+            print(f"Error: Polygon {polygon.id} needs at least 3 vertices")
+            return
+        
+        glBegin(GL_POLYGON)
+        glColor3f(*polygon.color)
+        for vertex in polygon.vertices:
+            # Add additional type checking
+            if not isinstance(vertex, (tuple, list)) or len(vertex) != 2:
+                print(f"Invalid vertex in polygon {polygon.id}: {vertex}")
+                continue
+            glVertex2f(*vertex)
+        glEnd()
+
+    def draw_polygons(self):
+        for polygon in self.polygon_manager.get_polygons():
+            self.draw_polygon(polygon)
+        
+            # Calculate the centroid of the polygon for positioning the text
+            centroid_x = sum(vertex[0] for vertex in polygon.vertices) / len(polygon.vertices)
+            centroid_y = sum(vertex[1] for vertex in polygon.vertices) / len(polygon.vertices)
+
+            # Render the polygon ID near the centroid
+            glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
+            self.render_text(str(polygon.id), centroid_x, centroid_y)
+
+    def spawn_polygons(self):
+        num_polygons = random.randint(n, m)  # Define n and m
+        for i in range(num_polygons):
+            center = self.generate_border_point_inside_radar()  # Random position on the border
+            polygon = self.create_random_polygon(i, center)
+            self.polygons.append(polygon)  # Store the polygon
+            
     def generate_control_point(self, start_pos: List[float]) -> List[float]:
         dx = -start_pos[0]
         dy = -start_pos[1]
@@ -143,6 +243,14 @@ class Radar:
         return count
 
 
+    def generate_border_point_inside_radar(self) -> Tuple[float, float]:
+        """Generate a random point within the radar area."""
+        radius = random.uniform(0, self.border_radius)  # Limit to within the border radius
+        angle = random.uniform(0, 2 * math.pi)
+        x = radius * math.cos(angle)
+        y = radius * math.sin(angle)
+        return x, y
+        
     def generate_border_point(self) -> Tuple[float, float]:
         angle = random.uniform(0, 2 * math.pi)
         x = self.border_radius * math.cos(angle)
@@ -420,7 +528,10 @@ class Radar:
         self.draw_central_area()
         self.draw_sweep_line()
         self.draw_moving_objects()
-    
+
+    def remove_polygon_by_id(self, polygon_id: int):
+        self.polygon_manager.remove_polygon(polygon_id)
+
     def run(self):
         self.set_sector_angle(35.0)  # Set to desired angle in degrees
         while True:
@@ -436,13 +547,20 @@ class Radar:
                         self.radar_speed *= 1.2  # Increase speed
                     elif event.key == K_DOWN:
                         self.radar_speed *= 0.8  # Decrease speed
-            
+                    elif K_1 <= event.key <= K_9:  # Assuming polygon numbers are 1 to 9
+                        number = event.key - K_1 + 1  # Adjust for 1-based numbering
+                        if not self.polygon_manager.remove_polygon(number):
+                            print(f"Polygon {number} does not exist.")  # Feedback if polygon doesn't exist
+
             self.update_objects()
             self.draw()
             self.angle = (self.angle + self.radar_speed) % 360
             
+            self.draw_polygons()  # Draw polygons here
+
             pygame.display.flip()
             pygame.time.wait(20)
+
 
 if __name__ == "__main__":
     radar = Radar()
