@@ -9,6 +9,69 @@ from typing import List, Tuple,Literal
 
 
 @dataclass
+class NoisePoint:
+    x: float
+    y: float
+    intensity: float
+    speed: float
+    phase: float
+    radius: float
+
+class RadarNoise:
+    def __init__(self, polygon_vertices: List[Tuple[float, float]]):
+        self.vertices = polygon_vertices
+        self.noise_points = []
+        self.time_offset = random.uniform(0, 1000)  # Random starting time
+        self.generate_noise_points()
+        
+    def generate_noise_points(self):
+        # Find bounding box of the polygon
+        min_x = min(v[0] for v in self.vertices)
+        max_x = max(v[0] for v in self.vertices)
+        min_y = min(v[1] for v in self.vertices)
+        max_y = max(v[1] for v in self.vertices)
+        
+        # Calculate polygon center
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        
+        # Create dense noise points
+        num_points = 50  # Increased number of points for denser effect
+        for _ in range(num_points):
+            # Create points with varying distances from center
+            angle = random.uniform(0, 2 * math.pi)
+            distance = random.uniform(0, 0.8)  # Varied distance from center
+            
+            x = center_x + math.cos(angle) * distance
+            y = center_y + math.sin(angle) * distance
+            
+            # Create noise point with varying characteristics
+            point = NoisePoint(
+                x=x,
+                y=y,
+                intensity=random.uniform(0.1, 0.3),
+                speed=random.uniform(1, 3),
+                phase=random.uniform(0, 2 * math.pi),
+                radius=random.uniform(0.02, 0.08)  # Smaller radii for more subtle effect
+            )
+            self.noise_points.append(point)
+
+    def point_in_polygon(self, x: float, y: float) -> bool:
+        n = len(self.vertices)
+        inside = False
+        j = n - 1
+        for i in range(n):
+            if (((self.vertices[i][1] > y) != (self.vertices[j][1] > y)) and
+                (x < (self.vertices[j][0] - self.vertices[i][0]) * 
+                 (y - self.vertices[i][1]) / (self.vertices[j][1] - self.vertices[i][1]) + 
+                 self.vertices[i][0])):
+                inside = not inside
+            j = i
+        return inside
+        
+
+
+@dataclass
 class Polygon:
     id: int
     vertices: List[Tuple[float, float]]  # List of vertices
@@ -174,27 +237,7 @@ class Radar:
         
         return Polygon(id=polygon_id, vertices=vertices)
 
-    def draw_polygon(self, polygon: Polygon):
-        """Draw a filled polygon."""
-        # Add error checking
-        if not isinstance(polygon.vertices, list):
-            print(f"Error: Polygon {polygon.id} has invalid vertices")
-            return
-        
-        if len(polygon.vertices) < 3:
-            print(f"Error: Polygon {polygon.id} needs at least 3 vertices")
-            return
-        
-        glBegin(GL_POLYGON)
-        glColor3f(*polygon.color)
-        for vertex in polygon.vertices:
-            # Add additional type checking
-            if not isinstance(vertex, (tuple, list)) or len(vertex) != 2:
-                print(f"Invalid vertex in polygon {polygon.id}: {vertex}")
-                continue
-            glVertex2f(*vertex)
-        glEnd()
-
+    
     def draw_polygons(self):
         for polygon in self.polygon_manager.get_polygons():
             self.draw_polygon(polygon)
@@ -562,6 +605,80 @@ class Radar:
             pygame.time.wait(20)
 
 
+def draw_gradient_circle(x: float, y: float, radius: float, alpha: float):
+    """Draw a circle with radial gradient for smoother noise effect."""
+    segments = 32
+    glBegin(GL_TRIANGLE_FAN)
+    glColor4f(0.8, 0.8, 0.8, alpha)  # Center color
+    glVertex2f(x, y)  # Center point
+    
+    # Create gradient edge
+    glColor4f(0.8, 0.8, 0.8, 0)  # Fade to transparent
+    for i in range(segments + 1):
+        angle = 2.0 * math.pi * i / segments
+        px = x + radius * math.cos(angle)
+        py = y + radius * math.sin(angle)
+        glVertex2f(px, py)
+    glEnd()
+
+def update_Radar_class(Radar):
+    def draw_polygon(self, polygon: Polygon):
+        """Draw a filled polygon with enhanced radar noise effect."""
+        current_time = time.time()
+        
+        # Draw base polygon with dark grey
+        glBegin(GL_POLYGON)
+        glColor4f(0.2, 0.2, 0.2, 0.9)  # Darker base color
+        for vertex in polygon.vertices:
+            glVertex2f(*vertex)
+        glEnd()
+        
+        # Initialize noise if not exists
+        if not hasattr(polygon, 'noise'):
+            polygon.noise = RadarNoise(polygon.vertices)
+        
+        # Enable blending for smooth noise
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        
+        # Draw multiple layers of noise
+        for point in polygon.noise.noise_points:
+            if polygon.noise.point_in_polygon(point.x, point.y):
+                # Calculate dynamic intensity
+                time_factor = current_time * point.speed + polygon.noise.time_offset
+                wave = math.sin(time_factor + point.phase)
+                intensity = point.intensity * (0.5 + 0.5 * wave)
+                
+                # Draw gradient noise point
+                draw_gradient_circle(
+                    point.x + 0.02 * math.cos(time_factor), 
+                    point.y + 0.02 * math.sin(time_factor),
+                    point.radius,
+                    intensity
+                )
+        
+        # Add subtle scanning line effect
+        scan_angle = (current_time * 2) % (2 * math.pi)
+        for vertex in polygon.vertices:
+            if polygon.noise.point_in_polygon(vertex[0], vertex[1]):
+                angle_to_vertex = math.atan2(vertex[1], vertex[0])
+                angle_diff = abs(angle_to_vertex - scan_angle)
+                if angle_diff < 0.2:  # Narrow beam
+                    intensity = 0.3 * (1 - angle_diff / 0.2)
+                    draw_gradient_circle(
+                        vertex[0],
+                        vertex[1],
+                        0.05,
+                        intensity
+                    )
+    
+    # Add the new method to the Radar class
+    Radar.draw_polygon = draw_polygon
+
+# Call this function right after your Radar class definition
+update_Radar_class(Radar)
+
+ 
 if __name__ == "__main__":
     radar = Radar()
     radar.run()
