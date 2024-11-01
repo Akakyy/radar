@@ -17,6 +17,15 @@ class NoisePoint:
     phase: float
     radius: float
 
+@dataclass
+class NoisePoint:
+    x: float
+    y: float
+    intensity: float
+    speed: float
+    phase: float
+    radius: float
+
 class RadarNoise:
     def __init__(self, polygon_vertices: List[Tuple[float, float]]):
         self.vertices = polygon_vertices
@@ -168,10 +177,10 @@ class Radar:
         
         self.border_radius = 1.9
         self.polygon_manager = PolygonManager()
-        self.k = 3  # Minimum number of sides
-        self.g = 8  # Maximum number of sides
-        self.n = 1  # Minimum number of polygons
-        self.m = 5  # Maximum number of polygons
+        self.min_sides = 6  # Minimum number of sides
+        self.max_sides = 30  # Maximum number of sides
+        self.min_polygons_number = 1  # Minimum number of polygons
+        self.max_polygons_number = 5  # Maximum number of polygons
         
         # Generate random polygons on initialization
         self.generate_random_polygons()
@@ -206,7 +215,7 @@ class Radar:
         self.visibility_duration = 2.0  # How long object stays visible after sweep
     
     def generate_random_polygons(self):
-        num_polygons = random.randint(self.n, self.m)
+        num_polygons = random.randint(self.min_polygons_number, self.max_polygons_number)
         for i in range(num_polygons):
             center = self.generate_border_point_inside_radar()
             vertices = self.create_random_polygon(i + 1, center)  # Pass the ID (1-based)
@@ -222,7 +231,7 @@ class Radar:
 
     def create_random_polygon(self, polygon_id: int, center: Tuple[float, float]) -> Polygon:
         """Create a random convex polygon with a maximum angle."""
-        num_sides = random.randint(3, 8)  # Randomly choose the number of sides
+        num_sides = random.randint(self.min_sides, self.max_sides)  # Randomly choose the number of sides
         angle_offset = random.uniform(0, 90)  # Offset for the polygon's rotation
         angle_step = 90 / num_sides  # Maximum angle step
         
@@ -236,19 +245,6 @@ class Radar:
             vertices.append((x, y))
         
         return Polygon(id=polygon_id, vertices=vertices)
-
-    
-    def draw_polygons(self):
-        for polygon in self.polygon_manager.get_polygons():
-            self.draw_polygon(polygon)
-        
-            # Calculate the centroid of the polygon for positioning the text
-            centroid_x = sum(vertex[0] for vertex in polygon.vertices) / len(polygon.vertices)
-            centroid_y = sum(vertex[1] for vertex in polygon.vertices) / len(polygon.vertices)
-
-            # Render the polygon ID near the centroid
-            glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
-            self.render_text(str(polygon.id), centroid_x, centroid_y)
 
     def spawn_polygons(self):
         num_polygons = random.randint(n, m)  # Define n and m
@@ -508,6 +504,8 @@ class Radar:
         glBegin(GL_LINES)
         glColor4f(0.0, 1.0, 0.0, 1.0)
         glVertex2f(0, 0)
+        
+        # Calculate the endpoint of the sweep line
         x = self.border_radius * math.cos(math.radians(self.angle))
         y = self.border_radius * math.sin(math.radians(self.angle))
         glVertex2f(x, y)
@@ -516,12 +514,16 @@ class Radar:
         glBegin(GL_TRIANGLE_FAN)
         glColor4f(0.0, 0.5, 0.0, 0.15)
         glVertex2f(0, 0)
-        for deg in range(int(self.angle - 75), int(self.angle + 1)):
+        
+        # Iterate from self.angle + 75 degrees down to self.angle - 75 degrees
+        for deg in range(int(self.angle + 75), int(self.angle - 1), -1):  # Notice the -1 step for clockwise
             rad = math.radians(deg)
             x = self.border_radius * math.cos(rad)
             y = self.border_radius * math.sin(rad)
             glVertex2f(x, y)
+        
         glEnd()
+
     
     def draw_central_area(self):
         glColor4f(1.0, 0.0, 0.0, 0.2)
@@ -572,6 +574,18 @@ class Radar:
         self.draw_sweep_line()
         self.draw_moving_objects()
 
+    def draw_polygons(self):
+        for polygon in self.polygon_manager.get_polygons():
+            self.draw_polygon(polygon)
+        
+            # Calculate the centroid of the polygon for positioning the text
+            centroid_x = sum(vertex[0] for vertex in polygon.vertices) / len(polygon.vertices)
+            centroid_y = sum(vertex[1] for vertex in polygon.vertices) / len(polygon.vertices)
+
+            # Render the polygon ID near the centroid
+            glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
+            self.render_text(str(polygon.id), centroid_x, centroid_y)
+
     def remove_polygon_by_id(self, polygon_id: int):
         self.polygon_manager.remove_polygon(polygon_id)
 
@@ -621,64 +635,88 @@ def draw_gradient_circle(x: float, y: float, radius: float, alpha: float):
         glVertex2f(px, py)
     glEnd()
 
-def update_Radar_class(Radar):
-    def draw_polygon(self, polygon: Polygon):
-        """Draw a filled polygon with enhanced radar noise effect."""
-        current_time = time.time()
+
+def draw_polygon(self, polygon: Polygon):
+    """Draw a filled polygon with soft edges and enhanced radar noise effect."""
+    current_time = time.time()
+    
+    # Draw base polygon with gradient edges
+    # First draw slightly larger polygon with transparent edges
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    
+    # Draw multiple layers with decreasing opacity for soft edge effect
+    edge_layers = 15  # Number of layers for soft edge
+    base_size = 1.0   # Original size
+    edge_growth = 0.008  # How much each layer grows
+    
+    for layer in range(edge_layers - 1, -1, -1):
+        scale_factor = base_size + (layer * edge_growth)
+        alpha = 0.1 * (1 - (layer / edge_layers))  # Decreasing opacity for outer layers
         
-        # Draw base polygon with dark grey
         glBegin(GL_POLYGON)
-        glColor4f(0.2, 0.2, 0.2, 0.9)  # Darker base color
+        glColor4f(0.2, 0.2, 0.2, alpha)  # Darker base color with calculated alpha
+        
+        # Calculate scaled vertices
+        center_x = sum(v[0] for v in polygon.vertices) / len(polygon.vertices)
+        center_y = sum(v[1] for v in polygon.vertices) / len(polygon.vertices)
+        
         for vertex in polygon.vertices:
-            glVertex2f(*vertex)
+            # Scale vertex position from center
+            scaled_x = center_x + (vertex[0] - center_x) * scale_factor
+            scaled_y = center_y + (vertex[1] - center_y) * scale_factor
+            glVertex2f(scaled_x, scaled_y)
+        
         glEnd()
-        
-        # Initialize noise if not exists
-        if not hasattr(polygon, 'noise'):
-            polygon.noise = RadarNoise(polygon.vertices)
-        
-        # Enable blending for smooth noise
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        
-        # Draw multiple layers of noise
-        for point in polygon.noise.noise_points:
-            if polygon.noise.point_in_polygon(point.x, point.y):
-                # Calculate dynamic intensity
-                time_factor = current_time * point.speed + polygon.noise.time_offset
-                wave = math.sin(time_factor + point.phase)
-                intensity = point.intensity * (0.5 + 0.5 * wave)
-                
-                # Draw gradient noise point
+    
+    # Draw main polygon body
+    glBegin(GL_POLYGON)
+    glColor4f(0.2, 0.2, 0.2, 0.7)  # Main polygon color with some transparency
+    for vertex in polygon.vertices:
+        glVertex2f(*vertex)
+    glEnd()
+    
+    # Initialize noise if not exists
+    if not hasattr(polygon, 'noise'):
+        polygon.noise = RadarNoise(polygon.vertices)
+    
+    # Draw noise effects
+    for point in polygon.noise.noise_points:
+        if polygon.noise.point_in_polygon(point.x, point.y):
+            # Calculate dynamic intensity
+            time_factor = current_time * point.speed + polygon.noise.time_offset
+            wave = math.sin(time_factor + point.phase)
+            intensity = point.intensity * (0.5 + 0.5 * wave)
+            
+            # Draw gradient noise point
+            draw_gradient_circle(
+                point.x + 0.02 * math.cos(time_factor), 
+                point.y + 0.02 * math.sin(time_factor),
+                point.radius,
+                intensity * 0.7  # Reduced intensity for subtler effect
+            )
+    
+    # Add subtle scanning line effect with softer glow
+    scan_angle = (current_time * 2) % (2 * math.pi)
+    for vertex in polygon.vertices:
+        if polygon.noise.point_in_polygon(vertex[0], vertex[1]):
+            angle_to_vertex = math.atan2(vertex[1], vertex[0])
+            angle_diff = abs(angle_to_vertex - scan_angle)
+            if angle_diff < 0.3:  # Slightly wider beam
+                intensity = 0.2 * (1 - angle_diff / 0.3)  # Reduced intensity
                 draw_gradient_circle(
-                    point.x + 0.02 * math.cos(time_factor), 
-                    point.y + 0.02 * math.sin(time_factor),
-                    point.radius,
+                    vertex[0],
+                    vertex[1],
+                    0.07,  # Slightly larger radius
                     intensity
                 )
-        
-        # Add subtle scanning line effect
-        scan_angle = (current_time * 2) % (2 * math.pi)
-        for vertex in polygon.vertices:
-            if polygon.noise.point_in_polygon(vertex[0], vertex[1]):
-                angle_to_vertex = math.atan2(vertex[1], vertex[0])
-                angle_diff = abs(angle_to_vertex - scan_angle)
-                if angle_diff < 0.2:  # Narrow beam
-                    intensity = 0.3 * (1 - angle_diff / 0.2)
-                    draw_gradient_circle(
-                        vertex[0],
-                        vertex[1],
-                        0.05,
-                        intensity
-                    )
-    
-    # Add the new method to the Radar class
+
+# Add this function to update your Radar class
+def update_Radar_class(Radar):
     Radar.draw_polygon = draw_polygon
 
-# Call this function right after your Radar class definition
 update_Radar_class(Radar)
 
- 
 if __name__ == "__main__":
     radar = Radar()
     radar.run()
