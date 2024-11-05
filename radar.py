@@ -4,7 +4,7 @@ from OpenGL.GL import *
 import math
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple,Literal
 
 
@@ -121,7 +121,17 @@ class MovingObject:
     visible: bool = False
     last_sweep_time: float = 0.0  # Time when last swept by radar
     status: Literal['unknown', 'enemy', 'ally'] = 'unknown'  # New field for status
+    # fields for trajectory tracking
+    trajectory_points: List[Tuple[float, float]] = field(default_factory=list)
+    show_trajectory: bool = False
+    last_trajectory_update: float = 0.0
 
+    def update_trajectory(self, current_time: float):
+        """Update trajectory points with current position"""
+        if current_time - self.last_trajectory_update >= 0.05:  # Update every 50ms
+            self.trajectory_points.append((self.pos[0], self.pos[1]))
+            self.last_trajectory_update = current_time
+            
     def calculate_position(self, t: float) -> Tuple[float, float]:
         """Calculate position based on trajectory type at time t (0 to 1)"""
         # Adjust time based on speed factor
@@ -170,7 +180,39 @@ class MovingObject:
         
         return (base_x + perp_x * wave,
                 base_y + perp_y * wave)
+    
+    
+    def calculate_future_trajectory(self, current_time: float) -> List[Tuple[float, float]]:
+        """Calculate future trajectory points from current position"""
+        future_points = []
+        
+        # Calculate remaining time in flight
+        flight_duration = 3.0
+        elapsed_time = current_time - self.creation_time
+        remaining_duration = flight_duration - elapsed_time
+        
+        if remaining_duration <= 0:
+            return future_points
 
+        # Calculate 20 points along the remaining trajectory
+        num_points = 20
+        for i in range(num_points):
+            t = elapsed_time + (remaining_duration * i / num_points)
+            t_normalized = t / flight_duration
+            if t_normalized >= 1.0:
+                break
+            x, y = self.calculate_position(t_normalized)
+            future_points.append((x, y))
+            
+        return future_points
+
+    def get_full_trajectory(self, current_time: float) -> List[Tuple[float, float]]:
+        """Get combined historical and future trajectory points"""
+        if not self.show_trajectory:
+            return []
+        
+        # Combine historical points with future trajectory
+        return self.trajectory_points + self.calculate_future_trajectory(current_time)
 
 class Radar:
     def __init__(self, width=800, height=800):
@@ -213,6 +255,8 @@ class Radar:
         self.max_objects_per_rad = 3
         self.fade_in_duration = 0.5    # Duration for object to fade in after sweep
         self.visibility_duration = 2.0  # How long object stays visible after sweep
+        self.show_trajectory_ids: Set[int] = set()
+    
     
     def generate_random_polygons(self):
         num_polygons = random.randint(self.min_polygons_number, self.max_polygons_number)
@@ -477,28 +521,14 @@ class Radar:
                 (next_y - obj.pos[1]) * 100
             ]
             
+            # Update trajectory points
+            obj.update_trajectory(current_time)
+            
             # Check if object is in sweep area
             if self.is_in_sweep_area(obj.pos[0], obj.pos[1]):
                 if not obj.visible:
                     obj.last_sweep_time = current_time
                     obj.visible = True
-                    # Schedule fade out
-                    #obj.fade_out_time = current_time + self.visibility_duration
-
-    def draw_moving_objects(self):
-        current_time = time.time()
-        
-        for obj in self.moving_objects:
-            if obj.active and obj.visible:
-                alpha = self.calculate_object_alpha(obj, current_time)
-                if alpha > 0:
-
-                    # Increase size for a bolder appearance
-                    self.draw_checkmark(obj.pos[0], obj.pos[1], status=obj.status, size=0.2)
-
-                    # Render the object ID in grey
-                    glColor3f(0.5, 0.5, 0.5)  # Set color to grey
-                    self.render_text(str(obj.target_id), obj.pos[0], obj.pos[1])
 
     def draw_sweep_line(self):
         glBegin(GL_LINES)
@@ -590,7 +620,7 @@ class Radar:
         self.polygon_manager.remove_polygon(polygon_id)
 
     def run(self):
-        self.set_sector_angle(35.0)  # Set to desired angle in degrees
+        self.set_sector_angle(35.0)
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -601,22 +631,67 @@ class Radar:
                         pygame.quit()
                         return
                     elif event.key == K_UP:
-                        self.radar_speed *= 1.2  # Increase speed
+                        self.radar_speed *= 1.2
                     elif event.key == K_DOWN:
-                        self.radar_speed *= 0.8  # Decrease speed
-                    elif K_1 <= event.key <= K_9:  # Assuming polygon numbers are 1 to 9
-                        number = event.key - K_1 + 1  # Adjust for 1-based numbering
+                        self.radar_speed *= 0.8
+                    # Handle trajectory toggling for specific objects
+                    elif pygame.key.get_mods() & pygame.KMOD_CTRL:
+                        if K_1 <= event.key <= K_9:
+                            object_id = event.key - K_1 + 1
+                            # Toggle trajectory for specific object ID
+                            if object_id in self.show_trajectory_ids:
+                                self.show_trajectory_ids.remove(object_id)
+                            else:
+                                self.show_trajectory_ids.add(object_id)
+                    # Handle polygon removal (when Ctrl is not pressed)
+                    elif K_1 <= event.key <= K_9:
+                        number = event.key - K_1 + 1
                         if not self.polygon_manager.remove_polygon(number):
-                            print(f"Polygon {number} does not exist.")  # Feedback if polygon doesn't exist
+                            print(f"Polygon {number} does not exist.")
 
             self.update_objects()
             self.draw()
             self.angle = (self.angle + self.radar_speed) % 360
-            
-            self.draw_polygons()  # Draw polygons here
+            self.draw_polygons()
 
             pygame.display.flip()
             pygame.time.wait(20)
+
+    def draw_moving_objects(self):
+        current_time = time.time()
+        
+        # Draw trajectories first (so they appear behind objects)
+        for obj in self.moving_objects:
+            if obj.active and obj.visible:
+                # Only draw trajectory if object's ID is in show_trajectory_ids
+                if obj.target_id in self.show_trajectory_ids:
+                    obj.show_trajectory = True
+                    trajectory_points = obj.get_full_trajectory(current_time)
+                    if trajectory_points:
+                        glBegin(GL_LINE_STRIP)
+                        # Use object's status color for trajectory
+                        if obj.status == 'unknown':
+                            glColor4f(0.0, 0.0, 1.0, 0.5)  # Blue
+                        elif obj.status == 'enemy':
+                            glColor4f(1.0, 0.0, 0.0, 0.5)  # Red
+                        else:  # ally
+                            glColor4f(0.0, 1.0, 0.0, 0.5)  # Green
+                        
+                        for point in trajectory_points:
+                            glVertex2f(point[0], point[1])
+                        glEnd()
+                else:
+                    obj.show_trajectory = False
+
+        # Draw objects (remains the same)
+        for obj in self.moving_objects:
+            if obj.active and obj.visible:
+                alpha = self.calculate_object_alpha(obj, current_time)
+                if alpha > 0:
+                    self.draw_checkmark(obj.pos[0], obj.pos[1], status=obj.status, size=0.2)
+                    glColor3f(0.5, 0.5, 0.5)
+                    self.render_text(str(obj.target_id), obj.pos[0], obj.pos[1])
+
 
 
 def draw_gradient_circle(x: float, y: float, radius: float, alpha: float):
