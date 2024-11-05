@@ -4,10 +4,11 @@ from OpenGL.GL import *
 import math
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple,Literal
+import copy
 
-
+    
 @dataclass
 class NoisePoint:
     x: float
@@ -107,6 +108,15 @@ class PolygonManager:
     def get_polygons(self) -> List[Polygon]:
         return self.polygons
 
+
+@dataclass
+class StoredTrajectory:
+    points: List[Tuple[float, float]]
+    start_time: float
+    initial_position: Tuple[float, float]
+    start_pos: List[float]  # Add field to store the reference point
+
+
 @dataclass
 class MovingObject:
     pos: List[float]
@@ -119,12 +129,48 @@ class MovingObject:
     speed_factor: float
     active: bool = True
     visible: bool = False
-    last_sweep_time: float = 0.0  # Time when last swept by radar
-    status: Literal['unknown', 'enemy', 'ally'] = 'unknown'  # New field for status
+    last_sweep_time: float = 0.0
+    status: Literal['unknown', 'enemy', 'ally'] = 'unknown'
+    show_trail: bool = False
+    stored_trajectory: StoredTrajectory = None
+    trail_start_time: float = 0.0
+    
+    def store_current_trajectory(self, current_time: float):
+        """Store the current trajectory from current position"""
+        self.trail_start_time = current_time
+        self.show_trail = True
+        
+        # Calculate relative start position from current position
+        # This ensures the trajectory continues from the current position
+        dx = -self.pos[0]  # Distance to target (origin)
+        dy = -self.pos[1]
+        
+        # Create new reference point for trajectory calculation
+        new_start_pos = [self.pos[0], self.pos[1]]
+        
+        self.stored_trajectory = StoredTrajectory(
+            points=[],
+            start_time=current_time,
+            initial_position=(self.pos[0], self.pos[1]),
+            start_pos=new_start_pos  # Store the new reference point
+        )
 
+    def calculate_position_from_time(self, from_time: float, current_time: float) -> Tuple[float, float]:
+        """Calculate position at a specific time from the stored starting point"""
+        flight_duration = 3.0
+        t = (current_time - from_time) / flight_duration
+        
+        # Use the stored trajectory's start position instead of the original start position
+        if self.stored_trajectory:
+            old_start_pos = self.start_pos
+            self.start_pos = self.stored_trajectory.start_pos
+            pos = self.calculate_position(t)
+            self.start_pos = old_start_pos
+            return pos
+        return self.calculate_position(t)
+        
     def calculate_position(self, t: float) -> Tuple[float, float]:
-        """Calculate position based on trajectory type at time t (0 to 1)"""
-        # Adjust time based on speed factor
+        """Calculate position along trajectory"""
         adjusted_t = t * self.speed_factor
         if adjusted_t >= 1.0:
             return -self.start_pos[0], -self.start_pos[1]
@@ -135,16 +181,52 @@ class MovingObject:
             return self._calculate_straight(adjusted_t)
         else:  # sinusoidal
             return self._calculate_sinusoidal(adjusted_t)
-    
+
+    def update_trail(self, current_time: float):
+        if self.show_trail:
+            # Add new trail point
+            self.trail_points.append(TrailPoint(
+                x=self.pos[0],
+                y=self.pos[1],
+                creation_time=current_time
+            ))
+            
+            # Update existing trail points and remove old ones
+            TRAIL_DURATION = 2.0  # Trail lasts for 2 seconds
+            self.trail_points = [
+                point for point in self.trail_points
+                if current_time - point.creation_time < TRAIL_DURATION
+            ]
+            
+            # Update alpha values for remaining points
+            for point in self.trail_points:
+                age = current_time - point.creation_time
+                point.alpha = max(0.0, 1.0 - (age / TRAIL_DURATION))
+
+
     def _calculate_parabolic(self, t: float) -> Tuple[float, float]:
-        """Parabolic trajectory using quadratic Bezier curve"""
-        px = (1-t)**2 * self.start_pos[0] + \
-             2*(1-t)*t * self.control_point[0] + \
-             t**2 * (-self.start_pos[0])
+        """Parabolic trajectory using quadratic Bezier curve from current position"""
+        # Use stored trajectory start position if available
+        start_x = self.start_pos[0]
+        start_y = self.start_pos[1]
         
-        py = (1-t)**2 * self.start_pos[1] + \
-             2*(1-t)*t * self.control_point[1] + \
-             t**2 * (-self.start_pos[1])
+        # Calculate control point relative to current position
+        dx = -start_x
+        dy = -start_y
+        dist = math.sqrt(dx*dx + dy*dy)
+        
+        # Adjust control point based on current position
+        ctrl_x = start_x + dx/2 + dy/dist * 0.5
+        ctrl_y = start_y + dy/2 - dx/dist * 0.5
+        
+        # Calculate position using Bezier curve
+        px = (1-t)**2 * start_x + \
+             2*(1-t)*t * ctrl_x + \
+             t**2 * (-start_x)
+        
+        py = (1-t)**2 * start_y + \
+             2*(1-t)*t * ctrl_y + \
+             t**2 * (-start_y)
         
         return px, py
     
@@ -213,7 +295,50 @@ class Radar:
         self.max_objects_per_rad = 3
         self.fade_in_duration = 0.5    # Duration for object to fade in after sweep
         self.visibility_duration = 2.0  # How long object stays visible after sweep
+        self.TRAIL_DURATION = 5.0  # Increased duration for trails
+        self.TRAIL_FADE_START = 4.0  # When trail starts to fade
+        self.TRAJECTORY_POINTS = 100  # Number of points in trajectory
+        self.moving_objects_dict = {}
     
+    def draw_stored_trajectory(self, obj: MovingObject, current_time: float):
+        if not obj.show_trail or not obj.stored_trajectory:
+            return
+
+        time_elapsed = current_time - obj.trail_start_time
+        if time_elapsed > self.TRAIL_DURATION:
+            obj.show_trail = False
+            obj.stored_trajectory = None
+            return
+
+        # Set color based on status
+        if obj.status == 'unknown':
+            base_color = (0.0, 0.0, 1.0)  # Blue
+        elif obj.status == 'enemy':
+            base_color = (1.0, 0.0, 0.0)  # Red
+        else:
+            base_color = (0.0, 1.0, 0.0)  # Green
+
+        # Calculate alpha based on remaining time
+        alpha = 1.0 - (time_elapsed / self.TRAIL_DURATION)
+        alpha = min(1.0, max(0.0, alpha))
+
+        # Draw trajectory
+        glLineWidth(2.0)
+        glBegin(GL_LINE_STRIP)
+        glColor4f(base_color[0], base_color[1], base_color[2], alpha * 0.8)
+
+        # Calculate and draw trajectory points
+        points_shown = int(self.TRAJECTORY_POINTS * min(1.0, time_elapsed / 0.5))
+        time_step = time_elapsed / max(1, points_shown)
+        
+        for i in range(points_shown + 1):
+            point_time = obj.stored_trajectory.start_time + (i * time_step)
+            x, y = obj.calculate_position_from_time(obj.stored_trajectory.start_time, point_time)
+            glVertex2f(x, y)
+
+        glEnd()
+        glLineWidth(1.0)
+        
     def generate_random_polygons(self):
         num_polygons = random.randint(self.min_polygons_number, self.max_polygons_number)
         for i in range(num_polygons):
@@ -449,6 +574,23 @@ class Radar:
         else:
             return sweep_start <= obj_angle <= self.angle
             
+    def draw_trail(self, obj: MovingObject, current_time: float):
+        if not obj.show_trail or not obj.trail_points:
+            return
+            
+        glBegin(GL_LINE_STRIP)
+        for point in obj.trail_points:
+            # Set color based on object status with alpha from trail point
+            if obj.status == 'unknown':
+                glColor4f(0.0, 0.0, 1.0, point.alpha * 0.7)
+            elif obj.status == 'enemy':
+                glColor4f(1.0, 0.0, 0.0, point.alpha * 0.7)
+            elif obj.status == 'ally':
+                glColor4f(0.0, 1.0, 0.0, point.alpha * 0.7)
+                
+            glVertex2f(point.x, point.y)
+        glEnd()
+
     def update_objects(self):
         current_time = time.time()
         
@@ -477,28 +619,31 @@ class Radar:
                 (next_y - obj.pos[1]) * 100
             ]
             
+            # Check if trail should be disabled
+            if obj.show_trail and current_time - obj.trail_start_time > self.TRAIL_DURATION:
+                obj.show_trail = False
+            
             # Check if object is in sweep area
             if self.is_in_sweep_area(obj.pos[0], obj.pos[1]):
                 if not obj.visible:
                     obj.last_sweep_time = current_time
                     obj.visible = True
-                    # Schedule fade out
-                    #obj.fade_out_time = current_time + self.visibility_duration
 
     def draw_moving_objects(self):
         current_time = time.time()
         
         for obj in self.moving_objects:
             if obj.active and obj.visible:
+                # Draw stored trajectory first
+                self.draw_stored_trajectory(obj, current_time)
+                
+                # Draw the object
                 alpha = self.calculate_object_alpha(obj, current_time)
                 if alpha > 0:
-
-                    # Increase size for a bolder appearance
                     self.draw_checkmark(obj.pos[0], obj.pos[1], status=obj.status, size=0.2)
-
-                    # Render the object ID in grey
-                    glColor3f(0.5, 0.5, 0.5)  # Set color to grey
+                    glColor3f(0.5, 0.5, 0.5)
                     self.render_text(str(obj.target_id), obj.pos[0], obj.pos[1])
+
 
     def draw_sweep_line(self):
         glBegin(GL_LINES)
@@ -600,6 +745,20 @@ class Radar:
                     if event.key == K_ESCAPE:
                         pygame.quit()
                         return
+                     # Check for Ctrl + Number combinations
+                    if event.mod & KMOD_CTRL:
+                        if K_1 <= event.key <= K_9:
+                            target_id = event.key - K_0
+                            current_time = time.time()
+                            
+                            # Find and update target object
+                            for obj in self.moving_objects:
+                                if obj.target_id == target_id and obj.active:
+                                    # Store new trajectory from current position
+                                    obj.store_current_trajectory(current_time)
+																						   
+                                    break
+                    
                     elif event.key == K_UP:
                         self.radar_speed *= 1.2  # Increase speed
                     elif event.key == K_DOWN:
