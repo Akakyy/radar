@@ -79,31 +79,71 @@ class RadarNoise:
         return inside
         
 
+PolygonType = Literal[
+    'signal_rejection',
+    'wind',
+    'sco_signal',
+    'mfd',
+    'bkp',
+    'ppz',
+    'pbl',
+    'varu'
+]
+
 
 @dataclass
 class Polygon:
     id: int
-    vertices: List[Tuple[float, float]]  # List of vertices
-    color: Tuple[float, float, float] = (0.7, 0.7, 0.7)  # Light grey color
+    vertices: List[Tuple[float, float]]
+    type: PolygonType
+    color: Tuple[float, float, float] = (0.7, 0.7, 0.7)  # Light grey default color
+
+    def __post_init__(self):
+        # Define colors for different types
+        type_colors = {
+            'signal_rejection': (1.0, 0.0, 0.0),    # Red
+            'wind': (0.0, 0.0, 1.0),               # Blue
+            'sco_signal': (0.0, 1.0, 0.0),         # Green
+            'mfd': (1.0, 1.0, 0.0),                # Yellow
+            'bkp': (1.0, 0.5, 0.0),                # Orange
+            'ppz': (0.5, 0.0, 0.5),                # Purple
+            'pbl': (0.0, 1.0, 1.0),                # Cyan
+            'varu': (1.0, 0.0, 1.0)                # Magenta
+        }
+        self.color = type_colors.get(self.type, self.color)
     
 
 class PolygonManager:
     def __init__(self):
         self.polygons: List[Polygon] = []
         self.next_number: int = 1
+        self.polygon_types: List[PolygonType] = [
+            'signal_rejection',
+            'wind',
+            'sco_signal',
+            'mfd',
+            'bkp',
+            'ppz',
+            'pbl',
+            'varu'
+        ]
     
-    def add_polygon(self, vertices: List[Tuple[float, float]]):
-        polygon = Polygon(self.next_number, vertices)
-        self.polygons.append(polygon)
-        self.next_number += 1  # Increment after adding the polygon
-
     def remove_polygon(self, number: int) -> bool:
-        for polygon in self.polygons:
-            if polygon.id == number:
-                self.polygons.remove(polygon)
-                return True
-        return False  # Return False if polygon with given number does not exist
+      for polygon in self.polygons:
+          if polygon.id == number:
+              self.polygons.remove(polygon)
+              return True
+      return False
+        
 
+    def add_polygon(self, polygon):
+        # Randomly select a polygon type
+        #polygon_type = random.choice(self.polygon_types)
+        #polygon = Polygon(self.next_number, vertices, polygon_type)
+        self.polygons.append(polygon)
+        self.next_number += 1
+
+        
     def get_polygons(self) -> List[Polygon]:
         return self.polygons
 
@@ -262,16 +302,19 @@ class Radar:
         num_polygons = random.randint(self.min_polygons_number, self.max_polygons_number)
         for i in range(num_polygons):
             center = self.generate_border_point_inside_radar()
-            vertices = self.create_random_polygon(i + 1, center)  # Pass the ID (1-based)
-            self.polygon_manager.add_polygon(vertices.vertices)  # Add the VERTICES, not the Polygon object
+            polygon = self.create_random_polygon(i + 1, center)  # Pass the ID (1-based)
+            self.polygon_manager.add_polygon(polygon)  # Add the VERTICES, not the Polygon object
+
                 
     def set_sector_angle(self, angle: float):
        """Set the angular sector width in degrees."""
        self.sector_angle_degrees = angle
+
         
     def generate_random_speed(self) -> float:
         """Generate random speed factor between 0.5 and 2.0"""
         return random.uniform(0.05, 0.1)
+
 
     def create_random_polygon(self, polygon_id: int, center: Tuple[float, float]) -> Polygon:
         """Create a random convex polygon with a maximum angle."""
@@ -288,7 +331,10 @@ class Radar:
             y = center[1] + radius * math.sin(rad_angle)
             vertices.append((x, y))
         
-        return Polygon(id=polygon_id, vertices=vertices)
+        #polygon_type = random.choice(self.polygon_types)
+        polygon_type = random.choice(PolygonType.__args__)
+        return Polygon(id=polygon_id, vertices=vertices, type=polygon_type)
+
 
     def spawn_polygons(self):
         num_polygons = random.randint(n, m)  # Define n and m
@@ -296,7 +342,8 @@ class Radar:
             center = self.generate_border_point_inside_radar()  # Random position on the border
             polygon = self.create_random_polygon(i, center)
             self.polygons.append(polygon)  # Store the polygon
-            
+
+
     def generate_control_point(self, start_pos: List[float]) -> List[float]:
         dx = -start_pos[0]
         dy = -start_pos[1]
@@ -693,60 +740,43 @@ class Radar:
                     self.render_text(str(obj.target_id), obj.pos[0], obj.pos[1])
 
 
-
-def draw_gradient_circle(x: float, y: float, radius: float, alpha: float):
-    """Draw a circle with radial gradient for smoother noise effect."""
-    segments = 32
-    glBegin(GL_TRIANGLE_FAN)
-    glColor4f(0.8, 0.8, 0.8, alpha)  # Center color
-    glVertex2f(x, y)  # Center point
-    
-    # Create gradient edge
-    glColor4f(0.8, 0.8, 0.8, 0)  # Fade to transparent
-    for i in range(segments + 1):
-        angle = 2.0 * math.pi * i / segments
-        px = x + radius * math.cos(angle)
-        py = y + radius * math.sin(angle)
-        glVertex2f(px, py)
-    glEnd()
-
-
+# Update the draw_polygon function to use the polygon's color
 def draw_polygon(self, polygon: Polygon):
     """Draw a filled polygon with soft edges and enhanced radar noise effect."""
     current_time = time.time()
     
+    # Use polygon's color instead of fixed color
+    r, g, b = polygon.color
+    
     # Draw base polygon with gradient edges
-    # First draw slightly larger polygon with transparent edges
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
     
     # Draw multiple layers with decreasing opacity for soft edge effect
-    edge_layers = 15  # Number of layers for soft edge
-    base_size = 1.0   # Original size
-    edge_growth = 0.008  # How much each layer grows
+    edge_layers = 15
+    base_size = 1.0
+    edge_growth = 0.008
     
     for layer in range(edge_layers - 1, -1, -1):
         scale_factor = base_size + (layer * edge_growth)
-        alpha = 0.1 * (1 - (layer / edge_layers))  # Decreasing opacity for outer layers
+        alpha = 0.1 * (1 - (layer / edge_layers))
         
         glBegin(GL_POLYGON)
-        glColor4f(0.2, 0.2, 0.2, alpha)  # Darker base color with calculated alpha
+        glColor4f(r * 0.3, g * 0.3, b * 0.3, alpha)  # Darker version of polygon's color
         
-        # Calculate scaled vertices
         center_x = sum(v[0] for v in polygon.vertices) / len(polygon.vertices)
         center_y = sum(v[1] for v in polygon.vertices) / len(polygon.vertices)
         
         for vertex in polygon.vertices:
-            # Scale vertex position from center
             scaled_x = center_x + (vertex[0] - center_x) * scale_factor
             scaled_y = center_y + (vertex[1] - center_y) * scale_factor
             glVertex2f(scaled_x, scaled_y)
         
         glEnd()
     
-    # Draw main polygon body
+    # Draw main polygon body with polygon's color
     glBegin(GL_POLYGON)
-    glColor4f(0.2, 0.2, 0.2, 0.7)  # Main polygon color with some transparency
+    glColor4f(r, g, b, 0.7)
     for vertex in polygon.vertices:
         glVertex2f(*vertex)
     glEnd()
@@ -755,36 +785,56 @@ def draw_polygon(self, polygon: Polygon):
     if not hasattr(polygon, 'noise'):
         polygon.noise = RadarNoise(polygon.vertices)
     
-    # Draw noise effects
+    # Draw noise effects with adjusted color
     for point in polygon.noise.noise_points:
         if polygon.noise.point_in_polygon(point.x, point.y):
-            # Calculate dynamic intensity
             time_factor = current_time * point.speed + polygon.noise.time_offset
             wave = math.sin(time_factor + point.phase)
             intensity = point.intensity * (0.5 + 0.5 * wave)
             
-            # Draw gradient noise point
+            # Use polygon's color for noise effects
             draw_gradient_circle(
                 point.x + 0.02 * math.cos(time_factor), 
                 point.y + 0.02 * math.sin(time_factor),
                 point.radius,
-                intensity * 0.7  # Reduced intensity for subtler effect
+                intensity * 0.7,
+                (r, g, b)  # Pass polygon's color to gradient circle
             )
     
-    # Add subtle scanning line effect with softer glow
+    # Add scanning line effect with polygon's color
     scan_angle = (current_time * 2) % (2 * math.pi)
     for vertex in polygon.vertices:
         if polygon.noise.point_in_polygon(vertex[0], vertex[1]):
             angle_to_vertex = math.atan2(vertex[1], vertex[0])
             angle_diff = abs(angle_to_vertex - scan_angle)
-            if angle_diff < 0.3:  # Slightly wider beam
-                intensity = 0.2 * (1 - angle_diff / 0.3)  # Reduced intensity
+            if angle_diff < 0.3:
+                intensity = 0.2 * (1 - angle_diff / 0.3)
                 draw_gradient_circle(
                     vertex[0],
                     vertex[1],
-                    0.07,  # Slightly larger radius
-                    intensity
+                    0.07,
+                    intensity,
+                    (r, g, b)  # Pass polygon's color
                 )
+
+
+# Update the gradient circle function to accept color
+def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color: Tuple[float, float, float]):
+    """Draw a circle with radial gradient using the polygon's color."""
+    segments = 32
+    r, g, b = color
+    
+    glBegin(GL_TRIANGLE_FAN)
+    glColor4f(r, g, b, alpha)  # Center color using polygon's color
+    glVertex2f(x, y)
+    
+    glColor4f(r, g, b, 0)  # Fade to transparent while keeping the color
+    for i in range(segments + 1):
+        angle = 2.0 * math.pi * i / segments
+        px = x + radius * math.cos(angle)
+        py = y + radius * math.sin(angle)
+        glVertex2f(px, py)
+    glEnd()
 
 # Add this function to update your Radar class
 def update_Radar_class(Radar):
