@@ -6,23 +6,33 @@ import time
 from Noise import RadarNoise
 from PolygonUtils import PolygonManager, Polygon, PolygonType
 from MovingObject import MovingObject
+from Sector import SectorInput
 
 
 class Radar:
     def __init__(self, width=800, height=800):
-        
         self.border_radius = 1.9
+        self.distance_circles = [
+            {"radius": 0.5, "distance": 10},
+            {"radius": 0.8, "distance": 15},
+            {"radius": 1.1, "distance": 20},
+            {"radius": 1.4, "distance": 25},
+            {"radius": 1.7, "distance": 30}
+        ]
         self.polygon_manager = PolygonManager()
-        self.min_sides = 6  # Minimum number of sides
-        self.max_sides = 30  # Maximum number of sides
-        self.min_polygons_number = 1  # Minimum number of polygons
-        self.max_polygons_number = 5  # Maximum number of polygons
+        self.min_sides = 6
+        self.max_sides = 30
+        self.min_polygons_number = 1
+        self.max_polygons_number = 5
         
         # Generate random polygons on initialization
         self.generate_random_polygons()
-        self.moving_objects_dict: Dict[int, MovingObject] = {}  # Dictionary to hold objects by ID
+        self.moving_objects_dict: Dict[int, MovingObject] = {}
 
         pygame.init()
+        pygame.font.init()
+        self.font = pygame.font.SysFont('Arial', 16)  # Made font slightly smaller for better clarity
+        
         pygame.display.set_mode((width, height), DOUBLEBUF | OPENGL)
         pygame.display.set_caption("Radar Tracking System")
         
@@ -37,7 +47,7 @@ class Radar:
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         
-        self.sector_angle_degrees = 60.0  # Default sector angle in degrees where max number of objects are allowed
+        self.sector_angle_degrees = 60.0
         self.angle = 0
         self.radar_speed = 5.0
         self.center_radius = 0.3
@@ -47,9 +57,29 @@ class Radar:
         self.next_target_id = 1
         self.max_objects = 10
         self.max_objects_per_rad = 3
-        self.fade_in_duration = 0.5    # Duration for object to fade in after sweep
-        self.visibility_duration = 2.0  # How long object stays visible after sweep
+        self.fade_in_duration = 0.5
+        self.visibility_duration = 2.0
         self.show_trajectory_ids: Set[int] = set()
+        # Add sector input
+        self.sector_input = SectorInput(width, height)
+        # Create a separate surface for UI
+        self.ui_surface = pygame.Surface((width, height), SRCALPHA)
+
+    def get_distance_from_center(self, x: float, y: float) -> float:
+        """Calculate the distance from center in radar units"""
+        return math.sqrt(x * x + y * y)
+    
+    def get_azimuth(self, x: float, y: float) -> float:
+        """Calculate azimuth in degrees"""
+        azimuth = math.degrees(math.atan2(y, x))
+        if azimuth < 0:
+            azimuth += 360
+        return azimuth
+
+    def distance_to_radar_units(self, distance: float) -> float:
+        """Convert real distance (km) to radar units"""
+        # Scale factor: border_radius corresponds to maximum distance (30 km)
+        return (distance * self.border_radius) / 30
     
     
     def generate_random_polygons(self):
@@ -184,60 +214,63 @@ class Radar:
         self.next_target_id += 1
 
     def render_text(self, text, x, y):
-        """Render text vertically with correct orientation"""
+        """Render multiline text with proper spacing"""
         viewport = glGetIntegerv(GL_VIEWPORT)
         screen_x = int((x + 2) * viewport[2]/4)
-        screen_y = int((-y + 2) * viewport[3]/4)  # Flip y-coordinate
+        screen_y = int((-y + 2) * viewport[3]/4)
         
-        # Render text upright
-        text_surface = self.font.render(text, True, (0, 255, 0))
-        # Flip the surface vertically to fix orientation
-        text_surface = pygame.transform.flip(text_surface, False, True)
+        # Split text into lines and render each line separately
+        lines = text.split('\n')
+        line_height = self.font.get_height()
         
-        text_data = pygame.image.tostring(text_surface, "RGBA", True)
-        text_width, text_height = text_surface.get_size()
-        
-        glPushAttrib(GL_ALL_ATTRIB_BITS)
-        glPushMatrix()
-        
-        glMatrixMode(GL_PROJECTION)
-        glPushMatrix()
-        glLoadIdentity()
-        glOrtho(0, viewport[2], viewport[3], 0, -1, 1)
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-        
-        glEnable(GL_TEXTURE_2D)
-        texture_id = glGenTextures(1)
-        glBindTexture(GL_TEXTURE_2D, texture_id)
-        
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, text_width, text_height, 0, 
-                     GL_RGBA, GL_UNSIGNED_BYTE, text_data)
-        
-        # Offset text position
-        screen_x += 10
-        screen_y -= text_height + 10
-        
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        
-        glBegin(GL_QUADS)
-        glTexCoord2f(0, 0); glVertex2f(screen_x, screen_y)
-        glTexCoord2f(1, 0); glVertex2f(screen_x + text_width, screen_y)
-        glTexCoord2f(1, 1); glVertex2f(screen_x + text_width, screen_y + text_height)
-        glTexCoord2f(0, 1); glVertex2f(screen_x, screen_y + text_height)
-        glEnd()
-        
-        glDeleteTextures([texture_id])
-        
-        glMatrixMode(GL_PROJECTION)
-        glPopMatrix()
-        glMatrixMode(GL_MODELVIEW)
-        glPopMatrix()
-        glPopAttrib()
-
+        for i, line in enumerate(lines):
+            # Create surface for each line
+            text_surface = self.font.render(line, True, (0, 255, 0))
+            text_surface = pygame.transform.flip(text_surface, False, True)
+            text_data = pygame.image.tostring(text_surface, "RGBA", True)
+            text_width, text_height = text_surface.get_size()
+            
+            # Save current matrices
+            glMatrixMode(GL_MODELVIEW)
+            glPushMatrix()
+            glLoadIdentity()
+            
+            glMatrixMode(GL_PROJECTION)
+            glPushMatrix()
+            glLoadIdentity()
+            glOrtho(0, viewport[2], viewport[3], 0, -1, 1)
+            
+            glEnable(GL_TEXTURE_2D)
+            texture_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, texture_id)
+            
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, text_width, text_height, 0, 
+                        GL_RGBA, GL_UNSIGNED_BYTE, text_data)
+            
+            # Adjust y position for each line
+            line_y = screen_y + (i * line_height)
+            
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            
+            glBegin(GL_QUADS)
+            glTexCoord2f(0, 0); glVertex2f(screen_x, line_y)
+            glTexCoord2f(1, 0); glVertex2f(screen_x + text_width, line_y)
+            glTexCoord2f(1, 1); glVertex2f(screen_x + text_width, line_y + text_height)
+            glTexCoord2f(0, 1); glVertex2f(screen_x, line_y + text_height)
+            glEnd()
+            
+            # Cleanup
+            glDeleteTextures([texture_id])
+            glDisable(GL_TEXTURE_2D)
+            
+            # Restore matrices in reverse order
+            glMatrixMode(GL_PROJECTION)
+            glPopMatrix()
+            glMatrixMode(GL_MODELVIEW)
+            glPopMatrix()
     def draw_checkmark(self, x: float, y: float, size: float, status: Literal):
         """Draw a larger blue checkmark at position (x, y) with a specified size."""
         glBegin(GL_LINES)
@@ -331,6 +364,17 @@ class Radar:
                     obj.last_sweep_time = current_time
                     obj.visible = True
 
+    
+    def update_moving_object(self, obj):
+        # Update existing methods to track distance and azimuth
+        if obj.active and obj.visible:
+            # Calculate and store distance and azimuth
+            obj.distance = self.radar_units_to_distance(
+                self.get_distance_from_center(obj.pos[0], obj.pos[1])
+            )
+            obj.azimuth = self.get_azimuth(obj.pos[0], obj.pos[1])
+            
+            
     def draw_sweep_line(self):
         glBegin(GL_LINES)
         glColor4f(0.0, 1.0, 0.0, 1.0)
@@ -355,7 +399,10 @@ class Radar:
         
         glEnd()
 
-    
+    def radar_units_to_distance(self, units: float) -> float:
+        """Convert radar units to real distance (km)"""
+        return (units * 30) / self.border_radius
+        
     def draw_central_area(self):
         glColor4f(1.0, 0.0, 0.0, 0.2)
         glBegin(GL_TRIANGLE_FAN)
@@ -380,14 +427,14 @@ class Radar:
             glVertex2f(x, y)
         glEnd()
     
+    
     def draw(self):
         glClear(GL_COLOR_BUFFER_BIT)
         glLoadIdentity()
         
-        # Draw grid circles
-        glColor4f(0.0, 0.3, 0.0, 1.0)
-        for radius in [0.5, 1.0, 1.5]:
-            self.draw_circle(radius)
+        # Draw distance circles with labels
+        for circle_info in self.distance_circles:
+            self.draw_circle_with_label(circle_info)
             
         # Draw outer border
         glColor4f(0.0, 1.0, 0.0, 1.0)
@@ -458,25 +505,26 @@ class Radar:
             pygame.display.flip()
             pygame.time.wait(20)
 
+    
     def draw_moving_objects(self):
         current_time = time.time()
         
-        # Draw trajectories first (so they appear behind objects)
+        # Draw trajectories first
         for obj in self.moving_objects:
             if obj.active and obj.visible:
-                # Only draw trajectory if object's ID is in show_trajectory_ids
+                self.update_moving_object(obj)
+                
                 if obj.target_id in self.show_trajectory_ids:
                     obj.show_trajectory = True
                     trajectory_points = obj.get_full_trajectory(current_time)
                     if trajectory_points:
                         glBegin(GL_LINE_STRIP)
-                        # Use object's status color for trajectory
                         if obj.status == 'unknown':
-                            glColor4f(0.0, 0.0, 1.0, 0.5)  # Blue
+                            glColor4f(0.0, 0.0, 1.0, 0.5)
                         elif obj.status == 'enemy':
-                            glColor4f(1.0, 0.0, 0.0, 0.5)  # Red
+                            glColor4f(1.0, 0.0, 0.0, 0.5)
                         else:  # ally
-                            glColor4f(0.0, 1.0, 0.0, 0.5)  # Green
+                            glColor4f(0.0, 1.0, 0.0, 0.5)
                         
                         for point in trajectory_points:
                             glVertex2f(point[0], point[1])
@@ -484,15 +532,30 @@ class Radar:
                 else:
                     obj.show_trajectory = False
 
-        # Draw objects (remains the same)
+        # Draw objects
         for obj in self.moving_objects:
             if obj.active and obj.visible:
                 alpha = self.calculate_object_alpha(obj, current_time)
                 if alpha > 0:
                     self.draw_checkmark(obj.pos[0], obj.pos[1], status=obj.status, size=0.2)
-                    glColor3f(0.5, 0.5, 0.5)
-                    self.render_text(str(obj.target_id), obj.pos[0], obj.pos[1])
- 
+                    glColor3f(0.0, 1.0, 0.0)  # Bright green for better visibility
+                    # Format text with proper spacing
+                    info_text = f"ID: {obj.target_id}\n{obj.distance:.1f} km\nAZ: {obj.azimuth:.1f}°"
+                    self.render_text(info_text, obj.pos[0], obj.pos[1])
+
+    def draw_circle_with_label(self, circle_info):
+        radius = circle_info["radius"]
+        distance = circle_info["distance"]
+        
+        # Draw circle
+        glColor4f(0.0, 0.3, 0.0, 1.0)
+        self.draw_circle(radius)
+        
+        # Draw distance label with proper spacing
+        label_x = radius * math.cos(math.radians(45))
+        label_y = radius * math.sin(math.radians(45))
+        glColor3f(0.0, 1.0, 0.0)
+        self.render_text(f"{distance} km", label_x, label_y)
  
     # Update the draw_polygon function to use the polygon's color
     def draw_polygon(self, polygon: Polygon):
@@ -571,6 +634,7 @@ class Radar:
                         (r, g, b)  # Pass polygon's color
                     )
 
+
 # Update the gradient circle function to accept color
 def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color: Tuple[float, float, float]):
     """Draw a circle with radial gradient using the polygon's color."""
@@ -588,3 +652,4 @@ def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color:
         py = y + radius * math.sin(angle)
         glVertex2f(px, py)
     glEnd()
+    
