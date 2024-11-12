@@ -3,10 +3,9 @@ import random, math, pygame
 from pygame.locals import *
 from OpenGL.GL import *
 import time
-from Noise import RadarNoise
-from PolygonUtils import PolygonManager, Polygon, PolygonType
-from MovingObject import MovingObject
-from Sector import SectorInput
+from radar.Noise import RadarNoise
+from radar.PolygonUtils import PolygonManager, Polygon, PolygonType, Sector
+from radar.MovingObject import MovingObject
 
 
 class Radar:
@@ -60,11 +59,8 @@ class Radar:
         self.fade_in_duration = 0.5
         self.visibility_duration = 2.0
         self.show_trajectory_ids: Set[int] = set()
-        # Add sector input
-        self.sector_input = SectorInput(width, height)
-        # Create a separate surface for UI
-        self.ui_surface = pygame.Surface((width, height), SRCALPHA)
-
+        
+        
     def get_distance_from_center(self, x: float, y: float) -> float:
         """Calculate the distance from center in radar units"""
         return math.sqrt(x * x + y * y)
@@ -451,7 +447,8 @@ class Radar:
         self.draw_central_area()
         self.draw_sweep_line()
         self.draw_moving_objects()
-
+        self.draw_polygons()
+        
     def draw_polygons(self):
         for polygon in self.polygon_manager.get_polygons():
             self.draw_polygon(polygon)
@@ -463,12 +460,69 @@ class Radar:
             # Render the polygon ID near the centroid
             glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
             self.render_text(str(polygon.id), centroid_x, centroid_y)
+        
+        
+        for sector in self.polygon_manager.get_sectors():
+            self.draw_polygon(sector)
+
+
+    def draw_sector(self, sector: Sector):
+        """Draw a sector polygon with distance and azimuth labels."""
+        current_time = time.time()
+
+        # Draw base polygon with gradient edges
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+        # Draw multiple layers with decreasing opacity for soft edge effect
+        edge_layers = 15
+        base_size = 1.0
+        edge_growth = 0.008
+
+        for layer in range(edge_layers - 1, -1, -1):
+            scale_factor = base_size + (layer * edge_growth)
+            alpha = 0.1 * (1 - (layer / edge_layers))
+
+            glBegin(GL_POLYGON)
+            glColor4f(sector.color[0] * 0.3, sector.color[1] * 0.3, sector.color[2] * 0.3, alpha)
+
+            center_x = sum(v[0] for v in sector.vertices) / len(sector.vertices)
+            center_y = sum(v[1] for v in sector.vertices) / len(sector.vertices)
+
+            for vertex in sector.vertices:
+                scaled_x = center_x + (vertex[0] - center_x) * scale_factor
+                scaled_y = center_y + (vertex[1] - center_y) * scale_factor
+                glVertex2f(scaled_x, scaled_y)
+
+            glEnd()
+
+        # Draw main polygon body with sector's color
+        glBegin(GL_POLYGON)
+        glColor4f(sector.color[0], sector.color[1], sector.color[2], 0.7)
+        for vertex in sector.vertices:
+            glVertex2f(*vertex)
+        glEnd()
+
+        # Render distance and azimuth labels
+        distance_label_x = sector.distance * math.cos(math.radians(sector.azimuth - 15))
+        distance_label_y = sector.distance * math.sin(math.radians(sector.azimuth - 15))
+        azimuth_label_x = sector.distance * math.cos(math.radians(sector.azimuth + 15))
+        azimuth_label_y = sector.distance * math.sin(math.radians(sector.azimuth + 15))
+
+        glColor3f(0.0, 1.0, 0.0)  # Green for labels
+        self.render_text(f"{sector.distance:.1f} km", distance_label_x, distance_label_y)
+        self.render_text(f"{sector.azimuth:.1f}°", azimuth_label_x, azimuth_label_y)
+
 
     def remove_polygon_by_id(self, polygon_id: int):
         self.polygon_manager.remove_polygon(polygon_id)
 
     def run(self):
         self.set_sector_angle(35.0)
+        self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+        self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+
+
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
