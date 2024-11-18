@@ -6,7 +6,8 @@ import time
 from radar.Noise import RadarNoise
 from radar.PolygonUtils import PolygonManager, Polygon, PolygonType, Sector
 from radar.MovingObject import MovingObject
-
+from radar.SoundRecorder import AudioRecorder
+    
 
 class Radar:
     def __init__(self, width=800, height=800):
@@ -494,7 +495,8 @@ class Radar:
         # Create some test sectors
         self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
         self.create_sector(28, 87, "wind")  # At 135 degrees
-
+        audio_recorder = AudioRecorder()
+        
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -508,6 +510,8 @@ class Radar:
                         self.radar_speed *= 1.2
                     elif event.key == K_DOWN:
                         self.radar_speed *= 0.8
+                    elif event.key == K_k:
+                        audio_recorder.start_recording()
                     # Handle trajectory toggling for specific objects
                     elif pygame.key.get_mods() & pygame.KMOD_CTRL:
                         if K_1 <= event.key <= K_9:
@@ -522,7 +526,11 @@ class Radar:
                         number = event.key - K_1 + 1
                         if not self.polygon_manager.remove_polygon(number):
                             print(f"Polygon {number} does not exist.")
-
+                elif event.type == KEYUP:
+                    # Stop recording when K key is released
+                    if event.key == K_k:
+                        audio_recorder.stop_recording()
+                        
             self.update_objects()
             self.draw()
             self.angle = (self.angle + self.radar_speed) % 360

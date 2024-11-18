@@ -1,3 +1,5 @@
 pygame
 numpy
 PyOpenGL
+sounddevice
+soundfile
