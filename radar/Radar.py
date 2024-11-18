@@ -10,13 +10,14 @@ from radar.MovingObject import MovingObject
 
 class Radar:
     def __init__(self, width=800, height=800):
-        self.border_radius = 1.9
+        self.border_radius = 1.9  # максимальный радиус в радарных единицах
+        self.max_distance_km = 30  # максимальная дистанция в км
         self.distance_circles = [
             {"radius": 0.5, "distance": 10},
             {"radius": 0.8, "distance": 15},
             {"radius": 1.1, "distance": 20},
             {"radius": 1.4, "distance": 25},
-            {"radius": 1.7, "distance": 30}
+            {"radius": 1.7, "distance": self.max_distance_km}
         ]
         self.polygon_manager = PolygonManager()
         self.min_sides = 6
@@ -58,6 +59,12 @@ class Radar:
         self.fade_in_duration = 0.5
         self.visibility_duration = 2.0
         self.show_trajectory_ids: Set[int] = set()
+
+        
+    def create_sector(self, distance_km: float, angle: float, type: str):
+        """Создает сектор, принимая расстояние в километрах"""
+        #radar_distance = self.km_to_radar_units(distance_km, )
+        return self.polygon_manager.create_sector(distance_km, angle, type, self.max_distance_km, self.distance_circles)
         
         
     def get_distance_from_center(self, x: float, y: float) -> float:
@@ -480,11 +487,13 @@ class Radar:
 
     def run(self):
         self.set_sector_angle(35.0)
+
+
         #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
         #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
         # Create some test sectors
-        self.polygon_manager.create_sector(1.5, 45, "signal_rejection")  # At 45 degrees
-        self.polygon_manager.create_sector(1.2, 135, "wind")  # At 135 degrees
+        self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
+        self.create_sector(28, 87, "wind")  # At 135 degrees
 
         while True:
             for event in pygame.event.get():

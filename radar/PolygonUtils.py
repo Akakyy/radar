@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple, Literal
+from typing import List, Tuple, Literal, Dict, Any
 import math
 from OpenGL.GL import *  # Add this import at the top
 
@@ -39,94 +39,95 @@ class Polygon:
 
 
 class Sector:
-    def __init__(self, id: int, distance: float, angle: float, type: str):
+    def __init__(self, id: int, distance: float, angle: float, type: str, max_distance_km: float, distance_circles):
         """
         Initialize a sector with given parameters
         
         Args:
             id: Unique identifier for the sector
-            distance: Distance from center (in radar units)
+            distance: The distance (in km) based on radius
             angle: Central angle of the sector (in degrees)
-            type: Type of the sector (same as polygon types)
+            type: Type of the sector
+            max_distance_km: The maximum distance in kilometers
         """
         self.id = id
-        self.distance = distance
-        self.angle = angle
+        self.distance = distance  # Distance in kilometers
+        self.angle = angle  # Central angle of the sector
         self.type = type
         self.width = 35  # Width of sector in degrees
-        # Light grey color with alpha
         self.fill_color = (0.8, 0.8, 0.8, 0.3)  # RGBA
         self.border_color = (0.6, 0.6, 0.6, 0.8)  # Slightly darker border
+        self.center_radius = 0.3  # Radius of the central red circle
+        self.max_distance_km = max_distance_km
         
+        # Define the distance circles scale
+        self.distance_circles = distance_circles
         
+    def get_scaled_distance(self):
+        """
+        Convert kilometers to scaled distance based on predefined distance circles.
+        
+        Returns:
+            float: Scaled distance for drawing the sector
+        """
+        # Find the appropriate distance circle for the current distance
+        for i, circle in enumerate(self.distance_circles):
+            if self.distance <= circle['distance']:
+                # If it's the first circle, use its radius directly
+                if i == 0:
+                    return circle['radius']
+                
+                # Interpolate between the previous and current circle
+                prev_circle = self.distance_circles[i-1]
+                
+                # Calculate the proportion of distance between previous and current circles
+                proportion = (self.distance - prev_circle['distance']) / \
+                             (circle['distance'] - prev_circle['distance'])
+                
+                # Linear interpolation of radius
+                scaled_radius = prev_circle['radius'] + \
+                                proportion * (circle['radius'] - prev_circle['radius'])
+                
+                return scaled_radius
+        
+        # If distance is beyond the last circle, use the last circle's radius
+        return self.distance_circles[-1]['radius']
+
     def draw(self):
-        """
-        Draw the sector using OpenGL
+        # Получаем корректированное расстояние в км
+        distance = self.get_scaled_distance()
+
+        # Устанавливаем начальный и конечный угол
+        start_angle = 90  # Начинаем с вертикальной линии сверху
+        end_angle = start_angle - self.angle  # Уменьшаем угол для поворота против часовой стрелки
         
-        Args:
-        
-        """
-        # Calculate the start and end angles for the sector
-        start_angle = self.angle - self.width/2
-        end_angle = self.angle + self.width/2
-        
-        # Draw filled sector
+        # Убедимся, что контекст правильно открыт
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         
-        # Fill
+        # Начало рисования
         glBegin(GL_TRIANGLE_FAN)
         glColor4f(*self.fill_color)
-        
-        # Center point
-        glVertex2f(0.0, 0.0)
-        
-        # Draw arc segments
+
+        glVertex2f(0.0, 0.0)  # Центр
+
+        # Рисуем дугу сектора
         num_segments = 32
         for i in range(num_segments + 1):
+            # Вычисляем угол для текущего сегмента
             angle = math.radians(start_angle + (end_angle - start_angle) * i / num_segments)
-            x = self.distance * math.cos(angle)
-            y = self.distance * math.sin(angle)
-            glVertex2f(x, y)
             
-        glEnd()
-        
-        # Draw border
-        glBegin(GL_LINE_LOOP)
-        glColor4f(*self.border_color)
-        
-        # Draw from center
-        glVertex2f(0.0, 0.0)
-        
-        # Draw arc border
-        for i in range(num_segments + 1):
-            angle = math.radians(start_angle + (end_angle - start_angle) * i / num_segments)
-            x = self.distance * math.cos(angle)
-            y = self.distance * math.sin(angle)
-            glVertex2f(x, y)
+            # Координаты точки сектора, ограниченные радиусом
+            x = distance * math.cos(angle)
+            y = distance * math.sin(angle)
             
+            glVertex2f(x, y)
+
+        # Завершаем рисование
         glEnd()
-        
-        # Draw radial lines
-        glBegin(GL_LINES)
-        glColor4f(*self.border_color)
-        
-        # Start radial line
-        start_x = self.distance * math.cos(math.radians(start_angle))
-        start_y = self.distance * math.sin(math.radians(start_angle))
-        glVertex2f(0.0, 0.0)
-        glVertex2f(start_x, start_y)
-        
-        # End radial line
-        end_x = self.distance * math.cos(math.radians(end_angle))
-        end_y = self.distance * math.sin(math.radians(end_angle))
-        glVertex2f(0.0, 0.0)
-        glVertex2f(end_x, end_y)
-        
-        glEnd()
-        
-        
-        
+
+
+     
 class PolygonManager:
     def __init__(self):
         self.polygons: List[Polygon] = []
@@ -161,7 +162,7 @@ class PolygonManager:
         return self.polygons
 
     
-    def create_sector(self, distance: float, angle: float, type: str) -> Sector:
+    def create_sector(self, distance_km, angle, type, max_distance_km, distance_circles) -> Sector:
         """
         Create a new sector and add it to the manager
         
@@ -174,7 +175,7 @@ class PolygonManager:
             Sector: The newly created sector
         """
         # Create new sector with unique ID
-        sector = Sector(self.next_sector_number, distance, angle, type)
+        sector = Sector(self.next_sector_number, distance_km, angle, type, max_distance_km, distance_circles)
         self.sectors.append(sector)
         self.next_sector_number += 1
         return sector
