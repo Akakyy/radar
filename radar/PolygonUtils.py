@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Tuple, Literal
 import math
+from OpenGL.GL import *  # Add this import at the top
 
 
 PolygonType = Literal[
@@ -35,38 +36,103 @@ class Polygon:
             'varu': (1.0, 0.0, 1.0)                # Magenta
         }
         self.color = type_colors.get(self.type, self.color)
-   
 
-@dataclass
-class Sector(Polygon):
-    distance: float = 0.0
-    azimuth: float = 0.0
 
-    def __post_init__(self):
-        super().__post_init__()
-        self.create_sector()
-
-    def create_sector(self):
-        radius = self.distance
-        vertices = []
-
-        start_angle = math.radians(self.azimuth - 30)
-        end_angle = math.radians(self.azimuth + 30)
-        for i in range(11):
-            angle = start_angle + i * (end_angle - start_angle) / 10
-            x = radius * math.cos(angle)
-            y = radius * math.sin(angle)
-            vertices.append((x, y))
-
-        self.vertices = vertices
-        self.color = self.color  # Assign the same color as the corresponding Polygon
+class Sector:
+    def __init__(self, id: int, distance: float, angle: float, type: str):
+        """
+        Initialize a sector with given parameters
+        
+        Args:
+            id: Unique identifier for the sector
+            distance: Distance from center (in radar units)
+            angle: Central angle of the sector (in degrees)
+            type: Type of the sector (same as polygon types)
+        """
+        self.id = id
+        self.distance = distance
+        self.angle = angle
+        self.type = type
+        self.width = 35  # Width of sector in degrees
+        # Light grey color with alpha
+        self.fill_color = (0.8, 0.8, 0.8, 0.3)  # RGBA
+        self.border_color = (0.6, 0.6, 0.6, 0.8)  # Slightly darker border
+        
+        
+    def draw(self):
+        """
+        Draw the sector using OpenGL
+        
+        Args:
+        
+        """
+        # Calculate the start and end angles for the sector
+        start_angle = self.angle - self.width/2
+        end_angle = self.angle + self.width/2
+        
+        # Draw filled sector
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        
+        # Fill
+        glBegin(GL_TRIANGLE_FAN)
+        glColor4f(*self.fill_color)
+        
+        # Center point
+        glVertex2f(0.0, 0.0)
+        
+        # Draw arc segments
+        num_segments = 32
+        for i in range(num_segments + 1):
+            angle = math.radians(start_angle + (end_angle - start_angle) * i / num_segments)
+            x = self.distance * math.cos(angle)
+            y = self.distance * math.sin(angle)
+            glVertex2f(x, y)
+            
+        glEnd()
+        
+        # Draw border
+        glBegin(GL_LINE_LOOP)
+        glColor4f(*self.border_color)
+        
+        # Draw from center
+        glVertex2f(0.0, 0.0)
+        
+        # Draw arc border
+        for i in range(num_segments + 1):
+            angle = math.radians(start_angle + (end_angle - start_angle) * i / num_segments)
+            x = self.distance * math.cos(angle)
+            y = self.distance * math.sin(angle)
+            glVertex2f(x, y)
+            
+        glEnd()
+        
+        # Draw radial lines
+        glBegin(GL_LINES)
+        glColor4f(*self.border_color)
+        
+        # Start radial line
+        start_x = self.distance * math.cos(math.radians(start_angle))
+        start_y = self.distance * math.sin(math.radians(start_angle))
+        glVertex2f(0.0, 0.0)
+        glVertex2f(start_x, start_y)
+        
+        # End radial line
+        end_x = self.distance * math.cos(math.radians(end_angle))
+        end_y = self.distance * math.sin(math.radians(end_angle))
+        glVertex2f(0.0, 0.0)
+        glVertex2f(end_x, end_y)
+        
+        glEnd()
+        
         
         
 class PolygonManager:
     def __init__(self):
         self.polygons: List[Polygon] = []
-        self.sectors: List[Sector] = []
         self.next_number: int = 1
+        self.next_sector_number = 0
+        self.sectors: List[Sector] = []
         self.polygon_types: List[PolygonType] = [
             'signal_rejection',
             'wind',
@@ -77,32 +143,13 @@ class PolygonManager:
             'pbl',
             'varu'
         ]
-
-    
-    def create_sector(self, distance: float, azimuth: float, polygon_type: PolygonType) -> Sector:
-        """Create a sector polygon based on the given distance, azimuth, and polygon type."""
-        sector = Sector(id=self.next_number, vertices=[], type=polygon_type)
-        sector.distance = distance
-        sector.azimuth = azimuth
-        self.sectors.append(sector)
-        self.next_number += 1
-        return sector
         
-    
     def remove_polygon(self, number: int) -> bool:
         for polygon in self.polygons:
             if polygon.id == number:
                 self.polygons.remove(polygon)
                 return True
-        for sector in self.sectors:
-            if sector.id == number:
-                self.sectors.remove(sector)
-                return True
         return False
-        
-    def get_sectors(self) -> List[Sector]:
-        return self.sectors
-        
         
     def add_polygon(self, polygon):
         # Randomly select a polygon type
@@ -112,3 +159,34 @@ class PolygonManager:
         
     def get_polygons(self) -> List[Polygon]:
         return self.polygons
+
+    
+    def create_sector(self, distance: float, angle: float, type: str) -> Sector:
+        """
+        Create a new sector and add it to the manager
+        
+        Args:
+            distance: Distance from center (in radar units)
+            angle: Central angle of the sector (in degrees)
+            type: Type of the sector
+            
+        Returns:
+            Sector: The newly created sector
+        """
+        # Create new sector with unique ID
+        sector = Sector(self.next_sector_number, distance, angle, type)
+        self.sectors.append(sector)
+        self.next_sector_number += 1
+        return sector
+        
+    def remove_sector(self, sector_id: int) -> bool:
+        """Remove a sector by its ID"""
+        for sector in self.sectors:
+            if sector.id == sector_id:
+                self.sectors.remove(sector)
+                return True
+        return False
+        
+    def get_sectors(self) -> List[Sector]:
+        """Get all sectors"""
+        return self.sectors

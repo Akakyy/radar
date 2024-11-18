@@ -23,7 +23,6 @@ class Radar:
         self.max_sides = 30
         self.min_polygons_number = 1
         self.max_polygons_number = 5
-        
         # Generate random polygons on initialization
         self.generate_random_polygons()
         self.moving_objects_dict: Dict[int, MovingObject] = {}
@@ -267,6 +266,8 @@ class Radar:
             glPopMatrix()
             glMatrixMode(GL_MODELVIEW)
             glPopMatrix()
+            
+
     def draw_checkmark(self, x: float, y: float, size: float, status: Literal):
         """Draw a larger blue checkmark at position (x, y) with a specified size."""
         glBegin(GL_LINES)
@@ -461,67 +462,29 @@ class Radar:
             glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
             self.render_text(str(polygon.id), centroid_x, centroid_y)
         
-        
+        # Then draw all sectors
         for sector in self.polygon_manager.get_sectors():
-            self.draw_polygon(sector)
-
-
-    def draw_sector(self, sector: Sector):
-        """Draw a sector polygon with distance and azimuth labels."""
-        current_time = time.time()
-
-        # Draw base polygon with gradient edges
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
-        # Draw multiple layers with decreasing opacity for soft edge effect
-        edge_layers = 15
-        base_size = 1.0
-        edge_growth = 0.008
-
-        for layer in range(edge_layers - 1, -1, -1):
-            scale_factor = base_size + (layer * edge_growth)
-            alpha = 0.1 * (1 - (layer / edge_layers))
-
-            glBegin(GL_POLYGON)
-            glColor4f(sector.color[0] * 0.3, sector.color[1] * 0.3, sector.color[2] * 0.3, alpha)
-
-            center_x = sum(v[0] for v in sector.vertices) / len(sector.vertices)
-            center_y = sum(v[1] for v in sector.vertices) / len(sector.vertices)
-
-            for vertex in sector.vertices:
-                scaled_x = center_x + (vertex[0] - center_x) * scale_factor
-                scaled_y = center_y + (vertex[1] - center_y) * scale_factor
-                glVertex2f(scaled_x, scaled_y)
-
-            glEnd()
-
-        # Draw main polygon body with sector's color
-        glBegin(GL_POLYGON)
-        glColor4f(sector.color[0], sector.color[1], sector.color[2], 0.7)
-        for vertex in sector.vertices:
-            glVertex2f(*vertex)
-        glEnd()
-
-        # Render distance and azimuth labels
-        distance_label_x = sector.distance * math.cos(math.radians(sector.azimuth - 15))
-        distance_label_y = sector.distance * math.sin(math.radians(sector.azimuth - 15))
-        azimuth_label_x = sector.distance * math.cos(math.radians(sector.azimuth + 15))
-        azimuth_label_y = sector.distance * math.sin(math.radians(sector.azimuth + 15))
-
-        glColor3f(0.0, 1.0, 0.0)  # Green for labels
-        self.render_text(f"{sector.distance:.1f} km", distance_label_x, distance_label_y)
-        self.render_text(f"{sector.azimuth:.1f}°", azimuth_label_x, azimuth_label_y)
-
+            # Calculate position for text (top right corner of sector)
+            #text_angle = math.radians(sector.angle + sector.width/4)  # Position text slightly right of center
+            #text_distance = sector.distance * 0.9  # Position text at 90% of the sector's radius
+            #text_x = text_distance * math.cos(text_angle)
+            #text_y = text_distance * math.sin(text_angle)
+            
+            # Render sector ID text
+            #self.render_text(str(sector.id), text_x, text_y)
+            sector.draw()
+            
 
     def remove_polygon_by_id(self, polygon_id: int):
         self.polygon_manager.remove_polygon(polygon_id)
 
     def run(self):
         self.set_sector_angle(35.0)
-        self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
-        self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
-
+        #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+        #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+        # Create some test sectors
+        self.polygon_manager.create_sector(1.5, 45, "signal_rejection")  # At 45 degrees
+        self.polygon_manager.create_sector(1.2, 135, "wind")  # At 135 degrees
 
         while True:
             for event in pygame.event.get():
@@ -687,8 +650,8 @@ class Radar:
                         intensity,
                         (r, g, b)  # Pass polygon's color
                     )
-
-
+    
+    
 # Update the gradient circle function to accept color
 def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color: Tuple[float, float, float]):
     """Draw a circle with radial gradient using the polygon's color."""
@@ -706,4 +669,4 @@ def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color:
         py = y + radius * math.sin(angle)
         glVertex2f(px, py)
     glEnd()
-    
+
