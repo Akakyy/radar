@@ -15,12 +15,13 @@ class AudioRecorder:
         self.recording = False
         self.recorded_frames = []
         self.temp_file = None
+        self.save_full_filename = None
 
     def start_recording(self):
         self.recording = True
         self.recorded_frames = []
-        filename = Path(self.dir_to_save_wav) / f"{uuid.uuid4()}.wav"
-        self.temp_file = filename.open('wb')
+        self.save_full_filename = Path(self.dir_to_save_wav) / f"{uuid.uuid4()}.wav"
+        self.temp_file = self.save_full_filename.open('wb')
 
         self.recording_thread = threading.Thread(target=self._record)
         self.recording_thread.start()
@@ -34,6 +35,7 @@ class AudioRecorder:
         sf.write(self.temp_file, audio_data, self.sample_rate, subtype='PCM_16')
         self.temp_file.close()
         print(f"Recording saved to {self.temp_file.name}")
+        return self.save_full_filename
 
     def _record(self):
         with sd.InputStream(samplerate=self.sample_rate, 

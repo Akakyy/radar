@@ -2,16 +2,19 @@ from typing import List, Tuple, Literal
 import random, math, pygame
 from pygame.locals import *
 from OpenGL.GL import *
-import time
+import time, traceback
 from radar.Noise import RadarNoise
 from radar.PolygonUtils import PolygonManager, Polygon, PolygonType, Sector
 from radar.MovingObject import MovingObject
 from radar.SoundRecorder import AudioRecorder
     
+from radar.AlgorithmRecognition import AlgorithmRecognizer
+
 
 class Radar:
-    def __init__(self, dir_to_save_wav, width=800, height=800):
+    def __init__(self, dir_to_save_wav, pipe, width=800, height=800):
         self.dir_to_save_wav = dir_to_save_wav
+        self.pipe = pipe
         self.border_radius = 1.9  # максимальный радиус в радарных единицах
         self.max_distance_km = 30  # максимальная дистанция в км
         self.distance_circles = [
@@ -198,7 +201,7 @@ class Radar:
         speed_factor = self.generate_random_speed()
         
         # Randomly assign status
-        status = random.choice(['unknown', 'enemy', 'ally'])  # Random status
+        #status = random.choice(['unknown', 'enemy', 'ally'])  # Random status
         
         new_obj = MovingObject(
             pos=[x, y],
@@ -209,7 +212,7 @@ class Radar:
             start_pos=start_pos,
             trajectory_type=trajectory_type,
             speed_factor=speed_factor,
-            status=status  # Set status
+            status='unknown'  # Set status
         )
         
         # Add object to the list and dictionary
@@ -284,9 +287,9 @@ class Radar:
         # Set color based on status
         if status == 'unknown':
             glColor3f(0.0, 0.0, 1.0)  # Blue for unknown
-        elif status == 'enemy':
+        elif status == 'враг':
             glColor3f(1.0, 0.0, 0.0)  # Red for enemy
-        elif status == 'ally':
+        elif status == 'союзник':
             glColor3f(0.0, 1.0, 0.0)  # Green for ally
         #glColor3f(0.0, 0.0, 1.0)  # Set color to blue
         glVertex2f(x - size * 0.2, y - size * 0.2)  # Starting point of checkmark
@@ -530,7 +533,18 @@ class Radar:
                 elif event.type == KEYUP:
                     # Stop recording when K key is released
                     if event.key == K_k:
-                        audio_recorder.stop_recording()
+                        
+                        try:
+                            filename = audio_recorder.stop_recording()
+                            text = self.pipe(str(filename), generate_kwargs={"language": "russian"})
+                            print(f'Recognized string: {text}')
+                            algorithm_reconizer = AlgorithmRecognizer(self)
+                            algorithm_reconizer.recognize(text['text'].lower())
+                        except Exception as e:
+                            traceback.print_exc()
+                            continue
+                        #tokens = tokenize_russian_text(text)
+                        #print('Split to tokens')
                         
             self.update_objects()
             self.draw()

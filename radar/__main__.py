@@ -6,31 +6,33 @@ import numpy as np
 import tokenizers
 from pathlib import Path
 import click, json
-from radar.onnx_model import MoonshineOnnxModel
+import torch
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 
 from radar.Radar import Radar
 
 
-def read_wav(wav_file: Path):
-    with wave.open(wav_file) as f:
-        params = f.getparams()
-        assert (
-            params.nchannels == 1
-            and params.framerate == 16_000
-            and params.sampwidth == 2
-        ), f"wave file should have 1 channel, 16KHz, and int16"
-        audio = f.readframes(params.nframes)
-    
-    return audio
+def load_model(model_path):
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    print(f'Loading model on: {device}')
+    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    #model_id = "openai/whisper-large-v3"
 
+    model = AutoModelForSpeechSeq2Seq.from_pretrained(
+        model_path, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+    )
+    model.to(device)
 
-def inference_audio(audio, model, tokenizer_path: Path):
-    audio = np.frombuffer(audio, np.int16) / 32768.0
-    audio = audio.astype(np.float32)[None, ...]
-    tokens = model.generate(audio)
-    print(tokens)
-    tokenizer = tokenizers.Tokenizer.from_file(str(tokenizer_path))
-    return tokenizer.decode_batch(tokens)
+    processor = AutoProcessor.from_pretrained(model_path)
+    pipe = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        torch_dtype=torch_dtype,
+        device=device,
+    )
+    return model, processor, pipe
 
 
 @click.command()
@@ -43,16 +45,11 @@ def main(config: Path):
             if not models_dir.exists():
                 print(f'Folder with model {str(models_dir)} doesn\'t exist')
                 exit(1)
-            tokenizer_path = Path(config_json['model']['tokenizer_path'])
             dir_to_save_wav = config_json['dir_to_save_wav']
-            (models_dir)
-            model = MoonshineOnnxModel(models_dir=models_dir, use_gpu=False)
+            model, preprocessor, pipe = load_model(models_dir)
             print('Model loaded successfully')
-            audio = read_wav('C:\\temp\\e94b1c30-6b41-407f-afab-958197da510e.wav')
-            text = inference_audio(audio, model, tokenizer_path)
-            print(text)
-            #radar = Radar(dir_to_save_wav)
-            #radar.run()
+            radar = Radar(dir_to_save_wav, pipe)
+            radar.run()
     except Exception as e:
         #print(str(e))
         import traceback

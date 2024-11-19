@@ -3,6 +3,10 @@ numpy
 PyOpenGL
 sounddevice
 soundfile
-onnxruntime-gpu
+openai-whisper
+transformers 
+datasets[audio]
+accelerate
 tokenizers
 click
+spacy
