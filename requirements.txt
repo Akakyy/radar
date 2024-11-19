@@ -3,3 +3,6 @@ numpy
 PyOpenGL
 sounddevice
 soundfile
+onnxruntime-gpu
+tokenizers
+click

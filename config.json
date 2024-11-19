@@ -1,0 +1,7 @@
+{
+	"model": {
+		"models_dir": "D:\\downloads\\radar_commit\\radar\\radar\\moonshine_base_onnx",
+		"tokenizer_path": "D:\\downloads\\radar_commit\\radar\\radar\\assets\\tokenizer.json"
+	},
+	"dir_to_save_wav": "C:\\temp"
+}

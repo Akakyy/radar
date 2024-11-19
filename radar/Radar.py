@@ -10,7 +10,8 @@ from radar.SoundRecorder import AudioRecorder
     
 
 class Radar:
-    def __init__(self, width=800, height=800):
+    def __init__(self, dir_to_save_wav, width=800, height=800):
+        self.dir_to_save_wav = dir_to_save_wav
         self.border_radius = 1.9  # максимальный радиус в радарных единицах
         self.max_distance_km = 30  # максимальная дистанция в км
         self.distance_circles = [
@@ -495,7 +496,7 @@ class Radar:
         # Create some test sectors
         self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
         self.create_sector(28, 87, "wind")  # At 135 degrees
-        audio_recorder = AudioRecorder()
+        audio_recorder = AudioRecorder(self.dir_to_save_wav)
         
         while True:
             for event in pygame.event.get():
