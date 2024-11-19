@@ -19,14 +19,14 @@ class AlgorithmRecognizer:
         else:
             print('Object id was not found {obj_id}')
 
-    def show_trajectory_ids():
+    def show_trajectory_ids(self):
         for x in self.radar.moving_objects:
-            self.radar.show_trajectory_ids.add(object_id)
+            self.radar.show_trajectory_ids.add(x.target_id)
                 
-    def disable_trajectory_ids():   
+    def disable_trajectory_ids(self):   
         for x in self.radar.moving_objects:
             if x in self.radar.show_trajectory_ids:
-                self.radar.show_trajectory_ids.remove(object_id)
+                self.radar.show_trajectory_ids.remove(x.target_id)
 
     def find_number_and_next_word(s, delimiter):
         parts = s.split(delimiter)  # Split the string by the delimiter
@@ -56,8 +56,10 @@ class AlgorithmRecognizer:
             else:
                 print(f"Object of moving id was not found here: {parsed_string_from_audio}")
         elif parsed_string_from_audio.strip().find("казать трассу") > -1:
+            print(f'Found command: {казать трассу}')
             self.show_trajectory_ids()
-        elif parsed_string_from_audio.strip().startswith("убрать трассу"):
+        elif parsed_string_from_audio.strip().find("брать трассу") > -1:
+            print(f'Found command: {убрать трассу}')
             self.disable_trajectory_ids()
 
         else:
