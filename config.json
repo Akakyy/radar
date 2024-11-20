@@ -1,6 +1,6 @@
 {
 	"model": {
-		"models_dir": "D:\\downloads\\radar_commit\\radar\\radar\\whisper-large-v3"
+		"models_dir": "D:\\downloads\\radar_commit\\radar\\radar\\faster-whisper-large-v3-russian"
 	},
 	"dir_to_save_wav": "C:\\temp"
 }

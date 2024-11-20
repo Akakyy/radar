@@ -7,7 +7,9 @@ import tokenizers
 from pathlib import Path
 import click, json
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+#from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from transformers import WhisperForConditionalGeneration, WhisperProcessor, pipeline
+from safetensors.torch import save_file
 
 from radar.Radar import Radar
 
@@ -18,12 +20,24 @@ def load_model(model_path):
     torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     #model_id = "openai/whisper-large-v3"
 
-    model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_path, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
-    )
-    model.to(device)
-
-    processor = AutoProcessor.from_pretrained(model_path)
+    #model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    #    model_path, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+    #)
+    #model.to(device)
+    
+    #model = WhisperForConditionalGeneration.from_pretrained(
+        #model_path, 
+        #torch_dtype=torch_dtype, 
+        #low_cpu_mem_usage=True, 
+        #use_safetensors=False,
+        #attn_implementation="flash_attention_2" if your GPU supports it
+    #)
+    model = torch.load("D:\\downloads\\radar_commit\\radar\\radar\\faster-whisper-large-v3-russian\\model.bin")
+    save_file(model, "D:\\downloads\\radar_commit\\radar\\radar\\faster-whisper-large-v3-russian\\model.safetensors")
+    exit(0)
+    processor = WhisperProcessor.from_pretrained(model_path)
+    
+    #processor = AutoProcessor.from_pretrained(model_path)
     pipe = pipeline(
         "automatic-speech-recognition",
         model=model,
@@ -32,7 +46,19 @@ def load_model(model_path):
         torch_dtype=torch_dtype,
         device=device,
     )
-    return model, processor, pipe
+    asr_pipeline = pipeline(
+        "automatic-speech-recognition",
+        model=model,
+        tokenizer=processor.tokenizer,
+        feature_extractor=processor.feature_extractor,
+        max_new_tokens=256,
+        chunk_length_s=30,
+        batch_size=16,
+        return_timestamps=True,
+        torch_dtype=torch_dtype,
+        device=device,
+    )
+    return model, processor, asr_pipeline
 
 
 @click.command()

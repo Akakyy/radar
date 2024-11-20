@@ -9,4 +9,4 @@ datasets[audio]
 accelerate
 tokenizers
 click
-spacy
+faster-whisper
