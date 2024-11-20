@@ -19,7 +19,11 @@ def load_model(model_path):
     #model_id = "openai/whisper-large-v3"
 
     model = AutoModelForSpeechSeq2Seq.from_pretrained(
-        model_path, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+        model_path, 
+        torch_dtype=torch_dtype, 
+        low_cpu_mem_usage=True, 
+        use_safetensors=True,
+        #attn_implementation="flash_attention_2"
     )
     model.to(device)
 
