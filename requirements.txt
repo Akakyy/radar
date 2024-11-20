@@ -10,3 +10,4 @@ accelerate
 tokenizers
 click
 faster-whisper
+ctranslate2

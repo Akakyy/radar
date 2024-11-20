@@ -533,7 +533,6 @@ class Radar:
                 elif event.type == KEYUP:
                     # Stop recording when K key is released
                     if event.key == K_k:
-                        
                         try:
                             filename = audio_recorder.stop_recording()
                             text = self.pipe(str(filename), generate_kwargs={"language": "russian"})
