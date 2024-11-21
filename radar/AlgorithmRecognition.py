@@ -1,10 +1,9 @@
 #!/usr/bin/python -tt
 # -*- coding: utf-8 -*-
 import re
-from typing import List, Tuple, Literal
+from typing import List, Tuple, Literal, get_type_hints 
 from radar.MovingObject import MovingObject
 from radar.NumberParser import convert_numbers_in_text
-from words2numsrus import NumberExtractor
 
 
 class AlgorithmRecognizer:
@@ -53,12 +52,12 @@ class AlgorithmRecognizer:
         Recognizes the command from a list of tokens and executes the corresponding function.
         :param parsed_string_from_audio: string representing the parsed command.
         """
-        parsed_string_from_audio = convert_numbers_in_text(parsed_string_from_audio)
+        parsed_string_from_audio = convert_numbers_in_text(parsed_string_from_audio, self.segmenter, self.syntax_parser, self.morph)
         
         if parsed_string_from_audio.strip().find("цель") > -1:
             parsed_object_id, moving_object_type = self.find_number_and_next_word(
                 parsed_string_from_audio.strip(), 
-                "задать цель"
+                "цель"
             )
             print(f'Trying to set status for id: {parsed_object_id}; status {moving_object_type}')
             if parsed_object_id:

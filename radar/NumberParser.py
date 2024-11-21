@@ -1,3 +1,5 @@
+from natasha import Doc
+
 # Dictionary to map words to numeric values
 NUM_WORDS = {
     "ноль": 0,
@@ -89,7 +91,7 @@ def convert_numbers_in_text(text, segmenter, syntax_parser, morph):
 
     # Replace numeric chunks in the original text
     for chunk in chunks:
-        number = words_to_number(chunk.split())  # Convert chunk to a number
+        number = words_to_number(chunk.split(), morph)  # Convert chunk to a number
         result_text = result_text.replace(chunk, str(number))  # Replace words with digits
 
     return result_text  # Return the final processed text

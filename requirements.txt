@@ -11,7 +11,5 @@ accelerate
 tokenizers
 click
 spacy
-words2numsrus
-flash-attn
 pymorphy2
 natasha

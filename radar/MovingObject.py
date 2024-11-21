@@ -22,6 +22,10 @@ class MovingObject:
     show_trajectory: bool = False
     last_trajectory_update: float = 0.0
 
+
+    def get_statuses():
+        status
+        
     def update_trajectory(self, current_time: float):
         """Update trajectory points with current position"""
         if current_time - self.last_trajectory_update >= 0.05:  # Update every 50ms
