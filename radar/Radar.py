@@ -2,28 +2,33 @@ from typing import List, Tuple, Literal
 import random, math, pygame
 from pygame.locals import *
 from OpenGL.GL import *
-import time
+import time, traceback
 from radar.Noise import RadarNoise
 from radar.PolygonUtils import PolygonManager, Polygon, PolygonType, Sector
 from radar.MovingObject import MovingObject
+from radar.SoundRecorder import AudioRecorder
+    
+from radar.AlgorithmRecognition import AlgorithmRecognizer
 
 
 class Radar:
-    def __init__(self, width=800, height=800):
-        self.border_radius = 1.9
+    def __init__(self, dir_to_save_wav, pipe, width=800, height=800):
+        self.dir_to_save_wav = dir_to_save_wav
+        self.pipe = pipe
+        self.border_radius = 1.9  # максимальный радиус в радарных единицах
+        self.max_distance_km = 30  # максимальная дистанция в км
         self.distance_circles = [
             {"radius": 0.5, "distance": 10},
             {"radius": 0.8, "distance": 15},
             {"radius": 1.1, "distance": 20},
             {"radius": 1.4, "distance": 25},
-            {"radius": 1.7, "distance": 30}
+            {"radius": 1.7, "distance": self.max_distance_km}
         ]
         self.polygon_manager = PolygonManager()
         self.min_sides = 6
         self.max_sides = 30
         self.min_polygons_number = 1
         self.max_polygons_number = 5
-        
         # Generate random polygons on initialization
         self.generate_random_polygons()
         self.moving_objects_dict: Dict[int, MovingObject] = {}
@@ -59,6 +64,12 @@ class Radar:
         self.fade_in_duration = 0.5
         self.visibility_duration = 2.0
         self.show_trajectory_ids: Set[int] = set()
+
+        
+    def create_sector(self, distance_km: float, angle: float, type: str):
+        """Создает сектор, принимая расстояние в километрах"""
+        #radar_distance = self.km_to_radar_units(distance_km, )
+        return self.polygon_manager.create_sector(distance_km, angle, type, self.max_distance_km, self.distance_circles)
         
         
     def get_distance_from_center(self, x: float, y: float) -> float:
@@ -190,7 +201,7 @@ class Radar:
         speed_factor = self.generate_random_speed()
         
         # Randomly assign status
-        status = random.choice(['unknown', 'enemy', 'ally'])  # Random status
+        #status = random.choice(['unknown', 'enemy', 'ally'])  # Random status
         
         new_obj = MovingObject(
             pos=[x, y],
@@ -201,7 +212,7 @@ class Radar:
             start_pos=start_pos,
             trajectory_type=trajectory_type,
             speed_factor=speed_factor,
-            status=status  # Set status
+            status='unknown'  # Set status
         )
         
         # Add object to the list and dictionary
@@ -267,6 +278,8 @@ class Radar:
             glPopMatrix()
             glMatrixMode(GL_MODELVIEW)
             glPopMatrix()
+            
+
     def draw_checkmark(self, x: float, y: float, size: float, status: Literal):
         """Draw a larger blue checkmark at position (x, y) with a specified size."""
         glBegin(GL_LINES)
@@ -274,9 +287,9 @@ class Radar:
         # Set color based on status
         if status == 'unknown':
             glColor3f(0.0, 0.0, 1.0)  # Blue for unknown
-        elif status == 'enemy':
+        elif status == 'враг':
             glColor3f(1.0, 0.0, 0.0)  # Red for enemy
-        elif status == 'ally':
+        elif status == 'союзник':
             glColor3f(0.0, 1.0, 0.0)  # Green for ally
         #glColor3f(0.0, 0.0, 1.0)  # Set color to blue
         glVertex2f(x - size * 0.2, y - size * 0.2)  # Starting point of checkmark
@@ -461,68 +474,33 @@ class Radar:
             glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
             self.render_text(str(polygon.id), centroid_x, centroid_y)
         
-        
+        # Then draw all sectors
         for sector in self.polygon_manager.get_sectors():
-            self.draw_polygon(sector)
-
-
-    def draw_sector(self, sector: Sector):
-        """Draw a sector polygon with distance and azimuth labels."""
-        current_time = time.time()
-
-        # Draw base polygon with gradient edges
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
-        # Draw multiple layers with decreasing opacity for soft edge effect
-        edge_layers = 15
-        base_size = 1.0
-        edge_growth = 0.008
-
-        for layer in range(edge_layers - 1, -1, -1):
-            scale_factor = base_size + (layer * edge_growth)
-            alpha = 0.1 * (1 - (layer / edge_layers))
-
-            glBegin(GL_POLYGON)
-            glColor4f(sector.color[0] * 0.3, sector.color[1] * 0.3, sector.color[2] * 0.3, alpha)
-
-            center_x = sum(v[0] for v in sector.vertices) / len(sector.vertices)
-            center_y = sum(v[1] for v in sector.vertices) / len(sector.vertices)
-
-            for vertex in sector.vertices:
-                scaled_x = center_x + (vertex[0] - center_x) * scale_factor
-                scaled_y = center_y + (vertex[1] - center_y) * scale_factor
-                glVertex2f(scaled_x, scaled_y)
-
-            glEnd()
-
-        # Draw main polygon body with sector's color
-        glBegin(GL_POLYGON)
-        glColor4f(sector.color[0], sector.color[1], sector.color[2], 0.7)
-        for vertex in sector.vertices:
-            glVertex2f(*vertex)
-        glEnd()
-
-        # Render distance and azimuth labels
-        distance_label_x = sector.distance * math.cos(math.radians(sector.azimuth - 15))
-        distance_label_y = sector.distance * math.sin(math.radians(sector.azimuth - 15))
-        azimuth_label_x = sector.distance * math.cos(math.radians(sector.azimuth + 15))
-        azimuth_label_y = sector.distance * math.sin(math.radians(sector.azimuth + 15))
-
-        glColor3f(0.0, 1.0, 0.0)  # Green for labels
-        self.render_text(f"{sector.distance:.1f} km", distance_label_x, distance_label_y)
-        self.render_text(f"{sector.azimuth:.1f}°", azimuth_label_x, azimuth_label_y)
-
+            # Calculate position for text (top right corner of sector)
+            #text_angle = math.radians(sector.angle + sector.width/4)  # Position text slightly right of center
+            #text_distance = sector.distance * 0.9  # Position text at 90% of the sector's radius
+            #text_x = text_distance * math.cos(text_angle)
+            #text_y = text_distance * math.sin(text_angle)
+            
+            # Render sector ID text
+            #self.render_text(str(sector.id), text_x, text_y)
+            sector.draw()
+            
 
     def remove_polygon_by_id(self, polygon_id: int):
         self.polygon_manager.remove_polygon(polygon_id)
 
     def run(self):
         self.set_sector_angle(35.0)
-        self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
-        self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
 
 
+        #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+        #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+        # Create some test sectors
+        self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
+        self.create_sector(28, 87, "wind")  # At 135 degrees
+        audio_recorder = AudioRecorder(self.dir_to_save_wav)
+        
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -536,6 +514,8 @@ class Radar:
                         self.radar_speed *= 1.2
                     elif event.key == K_DOWN:
                         self.radar_speed *= 0.8
+                    elif event.key == K_k:
+                        audio_recorder.start_recording()
                     # Handle trajectory toggling for specific objects
                     elif pygame.key.get_mods() & pygame.KMOD_CTRL:
                         if K_1 <= event.key <= K_9:
@@ -550,7 +530,22 @@ class Radar:
                         number = event.key - K_1 + 1
                         if not self.polygon_manager.remove_polygon(number):
                             print(f"Polygon {number} does not exist.")
-
+                elif event.type == KEYUP:
+                    # Stop recording when K key is released
+                    if event.key == K_k:
+                        
+                        try:
+                            filename = audio_recorder.stop_recording()
+                            text = self.pipe(str(filename), generate_kwargs={"language": "russian"})
+                            print(f'Recognized string: {text}')
+                            algorithm_reconizer = AlgorithmRecognizer(self)
+                            algorithm_reconizer.recognize(text['text'].lower())
+                        except Exception as e:
+                            traceback.print_exc()
+                            continue
+                        #tokens = tokenize_russian_text(text)
+                        #print('Split to tokens')
+                        
             self.update_objects()
             self.draw()
             self.angle = (self.angle + self.radar_speed) % 360
@@ -687,8 +682,8 @@ class Radar:
                         intensity,
                         (r, g, b)  # Pass polygon's color
                     )
-
-
+    
+    
 # Update the gradient circle function to accept color
 def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color: Tuple[float, float, float]):
     """Draw a circle with radial gradient using the polygon's color."""
@@ -706,4 +701,4 @@ def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color:
         py = y + radius * math.sin(angle)
         glVertex2f(px, py)
     glEnd()
-    
+

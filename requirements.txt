@@ -1,3 +1,15 @@
 pygame
+wheel
 numpy
 PyOpenGL
+sounddevice
+soundfile
+openai-whisper
+transformers 
+datasets[audio]
+accelerate
+tokenizers
+click
+spacy
+words2numsrus
+flash-attn

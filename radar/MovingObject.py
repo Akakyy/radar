@@ -16,7 +16,7 @@ class MovingObject:
     active: bool = True
     visible: bool = False
     last_sweep_time: float = 0.0  # Time when last swept by radar
-    status: Literal['unknown', 'enemy', 'ally'] = 'unknown'  # New field for status
+    status: Literal['unknown', 'враг', 'союзник'] = 'unknown'  # New field for status
     # fields for trajectory tracking
     trajectory_points: List[Tuple[float, float]] = field(default_factory=list)
     show_trajectory: bool = False
