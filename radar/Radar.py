@@ -12,9 +12,10 @@ from radar.AlgorithmRecognition import AlgorithmRecognizer
 
 
 class Radar:
-    def __init__(self, dir_to_save_wav, pipe, width=800, height=800):
+    def __init__(self, dir_to_save_wav, pipe, segmenter, syntax_parser, morph, width=800, height=800):
         self.dir_to_save_wav = dir_to_save_wav
         self.pipe = pipe
+        self.algorithm_reconizer = AlgorithmRecognizer(self, segmenter, syntax_parser, morph)
         self.border_radius = 1.9  # максимальный радиус в радарных единицах
         self.max_distance_km = 30  # максимальная дистанция в км
         self.distance_circles = [
@@ -538,8 +539,7 @@ class Radar:
                             filename = audio_recorder.stop_recording()
                             text = self.pipe(str(filename), generate_kwargs={"language": "russian"})
                             print(f'Recognized string: {text}')
-                            algorithm_reconizer = AlgorithmRecognizer(self)
-                            algorithm_reconizer.recognize(text['text'].lower())
+                            self.algorithm_reconizer.recognize(text['text'].lower())
                         except Exception as e:
                             traceback.print_exc()
                             continue

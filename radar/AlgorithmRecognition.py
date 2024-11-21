@@ -3,12 +3,17 @@
 import re
 from typing import List, Tuple, Literal
 from radar.MovingObject import MovingObject
+from radar.NumberParser import convert_numbers_in_text
 from words2numsrus import NumberExtractor
 
 
 class AlgorithmRecognizer:
-    def __init__(self, radar_object):
+    def __init__(self, radar_object, segmenter, syntax_parser, morph):
         self.radar = radar_object
+        self.segmenter = segmenter
+        self.syntax_parser = syntax_parser
+        self.morph = morph
+
         
     def set_moving_object_type(self, obj_id: int, type_obj: str):  # Added self parameter
         found_moving_object = [x for x in self.radar.moving_objects if x.target_id == obj_id]
@@ -43,39 +48,12 @@ class AlgorithmRecognizer:
                     return number, next_word
         return None, None
     
-    
-    def convert_russian_numbers(self, text):
-        # Create an instance of NumberExtractor
-        extractor = NumberExtractor()
-
-        # Regular expression to match Russian numeric words
-        pattern = r'\b(один|два|три|четыре|пять|шесть|семь|восемь|девять|десять|одиннадцать|двенадцать|тринадцать|четырнадцать|пятнадцать|шестнадцать|семнадцать|восемьдесят|девятнадцать|двадцать|тридцать|сорок|пятьдесят|шестьдесят|семьдесят|восемьдесят|девяносто|сто|двести|триста|четыреста|пятьсот|шестьсот|семьсот|восемьсот|девятьсот)\s*([а-яё]*)\b'
-
-        # Function to replace matched numeric words with their integer values
-        def replace_with_number(match):
-            number_word = match.group(0).strip()  # Get the matched word
-            try:
-                number_value = extractor(number_word)  # Call extractor on the matched word
-                print(dir(number_value))
-                if hasattr(number_value, 'fact'):  # Check if 'fact' exists
-                    return str(number_value.fact.int)  # Return integer value
-                else:
-                    raise ValueError("Extracted value does not have 'fact' attribute.")
-            except Exception as e:
-                print(f"Error extracting number for '{number_word}': {e}")
-                return number_word  # Return original word in case of error
-
-        # Substitute numeric words in the text with their corresponding numbers
-        converted_text = re.sub(pattern, replace_with_number, text)
-
-        return converted_text
-    
     def recognize(self, parsed_string_from_audio: str):
         """
         Recognizes the command from a list of tokens and executes the corresponding function.
         :param parsed_string_from_audio: string representing the parsed command.
         """
-        #parsed_string_from_audio = self.convert_russian_numbers(parsed_string_from_audio)
+        parsed_string_from_audio = convert_numbers_in_text(parsed_string_from_audio)
         
         if parsed_string_from_audio.strip().find("цель") > -1:
             parsed_object_id, moving_object_type = self.find_number_and_next_word(
