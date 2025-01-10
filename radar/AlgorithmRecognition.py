@@ -4,6 +4,7 @@ import re
 from typing import List, Tuple, Literal, get_type_hints 
 from radar.MovingObject import MovingObject
 from radar.NumberParser import convert_numbers_in_text
+from radar.PolygonUtils import PolygonType
 
 
 class AlgorithmRecognizer:
@@ -34,6 +35,51 @@ class AlgorithmRecognizer:
         for x in self.radar.moving_objects:
             if x.target_id in self.radar.show_trajectory_ids:  # Fixed membership test
                 self.radar.show_trajectory_ids.remove(x.target_id)
+    
+    def parse_coordinates_and_sector_type(self, text_str: str):
+        # Разбиваем строку по пробелам или табуляциям
+        parts = input_str.split()
+
+        # Проверка на количество элементов
+        if len(parts) != 3:
+            raise ValueError("Input string must contain exactly 3 parts.")
+
+        # Парсим первое значение как целое число (расстояние в км)
+        distance_km = int(parts[0])
+
+        # Парсим второй элемент как угол в радианах
+        try:
+            angle_radians = int(parts[1])
+        except ValueError:
+            raise ValueError("Angle must be a valid number.")
+
+        # Парсим слово и проверяем, что оно соответствует одному из допустимых значений
+        word = parts[2]
+        if word not in PolygonType.__args__:
+            raise ValueError(f"Invalid PolygonType. Valid options are: {', '.join(PolygonType.__args__)}")
+
+        return distance_km, angle_radians, word
+
+    # Пример использования
+    input_str = "100 1.5708 wind"
+    try:
+        distance_km, angle_radians, word = parse_string(input_str)
+        print(f"Distance (km): {distance_km}, Angle (radians): {angle_radians}, Word: {word}")
+    except ValueError as e:
+        print(f"Error: {e}")
+    
+    def create_sector(self, text_str: str, delimiter: str):
+        string_without_voice_command_str = s.split(delimiter)[1]
+        print(f"string_without_voice_command_str: #{s.split(delimiter)}#")
+        string_without_voice_command_str
+        
+        self.parse_coordinates_and_sector_type()
+        self.radar.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
+        
+        for x in self.radar.moving_objects:
+            if x.target_id in self.radar.show_trajectory_ids:  # Fixed membership test
+                self.radar.show_trajectory_ids.remove(x.target_id)
+
                 
     @staticmethod
     def find_number_and_next_word(s: str, delimiter: str):
@@ -70,5 +116,8 @@ class AlgorithmRecognizer:
         elif parsed_string_from_audio.strip().find("брать трассу") > -1:
             print('Found command: убрать трассу')  # Fixed string literal
             self.disable_trajectory_ids()
+        elif parsed_string_from_audio.strip().find("дать сектор") > -1:
+            print('Found command: создать сектор')  # Fixed string literal
+            self.create_sector(parsed_string_from_audio.strip(), "сектор")
         else:
             print(f"Unknown command: {parsed_string_from_audio}")

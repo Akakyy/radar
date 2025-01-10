@@ -408,7 +408,30 @@ class Radar:
             glVertex2f(x, y)
         
         glEnd()
-
+        
+    def draw_sweep_line_anti_clock_wise(self):
+        glBegin(GL_LINES)
+        glColor4f(0.0, 1.0, 0.0, 1.0)
+        glVertex2f(0, 0)
+        
+        # Calculate the endpoint of the sweep line
+        x = self.border_radius * math.cos(math.radians(self.angle))
+        y = self.border_radius * math.sin(math.radians(self.angle))
+        glVertex2f(x, y)
+        glEnd()
+        
+        glBegin(GL_TRIANGLE_FAN)
+        glColor4f(0.0, 0.5, 0.0, 0.15)
+        glVertex2f(0, 0)
+        
+        # Iterate from self.angle - 75 degrees up to self.angle + 1 degrees
+        for deg in range(int(self.angle - 75), int(self.angle + 1)):  # Changed to +1 step for counter-clockwise
+            rad = math.radians(deg)
+            x = self.border_radius * math.cos(rad)
+            y = self.border_radius * math.sin(rad)
+            glVertex2f(x, y)
+        
+        glEnd()
     def radar_units_to_distance(self, units: float) -> float:
         """Convert radar units to real distance (km)"""
         return (units * 30) / self.border_radius
@@ -459,7 +482,7 @@ class Radar:
         glEnd()
         
         self.draw_central_area()
-        self.draw_sweep_line()
+        self.draw_sweep_line_anti_clock_wise()
         self.draw_moving_objects()
         self.draw_polygons()
         
@@ -548,7 +571,8 @@ class Radar:
                         
             self.update_objects()
             self.draw()
-            self.angle = (self.angle + self.radar_speed) % 360
+            #self.angle = (self.angle + self.radar_speed) % 360
+            self.angle = (self.angle - self.radar_speed) % 360
             self.draw_polygons()
 
             pygame.display.flip()

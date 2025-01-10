@@ -5,8 +5,8 @@ from OpenGL.GL import *  # Add this import at the top
 
 
 PolygonType = Literal[
-    'signal_rejection',
-    'wind',
+    'реджекция',
+    'ветер',
     'sco_signal',
     'mfd',
     'bkp',
@@ -26,8 +26,8 @@ class Polygon:
     def __post_init__(self):
         # Define colors for different types
         type_colors = {
-            'signal_rejection': (1.0, 0.0, 0.0),    # Red
-            'wind': (0.0, 0.0, 1.0),               # Blue
+            'реджекция': (1.0, 0.0, 0.0),    # Red
+            'ветер': (0.0, 0.0, 1.0),               # Blue
             'sco_signal': (0.0, 1.0, 0.0),         # Green
             'mfd': (1.0, 1.0, 0.0),                # Yellow
             'bkp': (1.0, 0.5, 0.0),                # Orange
