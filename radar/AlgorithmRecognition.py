@@ -61,12 +61,12 @@ class AlgorithmRecognizer:
         return distance_km, angle_radians, word
 
     # Пример использования
-    input_str = "100 1.5708 wind"
-    try:
-        distance_km, angle_radians, word = parse_string(input_str)
-        print(f"Distance (km): {distance_km}, Angle (radians): {angle_radians}, Word: {word}")
-    except ValueError as e:
-        print(f"Error: {e}")
+    #input_str = "100 1.5708 wind"
+    #try:
+        #distance_km, angle_radians, word = parse_string(input_str)
+        #print(f"Distance (km): {distance_km}, Angle (radians): {angle_radians}, Word: {word}")
+    #except ValueError as e:
+        #print(f"Error: {e}")
     
     def create_sector(self, text_str: str, delimiter: str):
         string_without_voice_command_str = s.split(delimiter)[1]
