@@ -67,10 +67,10 @@ class Radar:
         self.show_trajectory_ids: Set[int] = set()
 
         
-    def create_sector(self, distance_km: float, angle: float, type: str):
+    def create_sector(self, distance_km: float, angle: float, type_sector: str):
         """Создает сектор, принимая расстояние в километрах"""
         #radar_distance = self.km_to_radar_units(distance_km, )
-        return self.polygon_manager.create_sector(distance_km, angle, type, self.max_distance_km, self.distance_circles)
+        return self.polygon_manager.create_sector(distance_km, angle, type_sector, self.max_distance_km, self.distance_circles)
         
         
     def get_distance_from_center(self, x: float, y: float) -> float:
@@ -521,8 +521,8 @@ class Radar:
         #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
         #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
         # Create some test sectors
-        self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
-        self.create_sector(28, 87, "wind")  # At 135 degrees
+        #self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
+        #self.create_sector(28, 87, "wind")  # At 135 degrees
         audio_recorder = AudioRecorder(self.dir_to_save_wav)
         
         while True:

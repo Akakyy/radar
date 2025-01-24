@@ -80,6 +80,7 @@ def convert_numbers_in_text(text, segmenter, syntax_parser, morph):
     # Split text into potential numeric chunks
     for token in tokens:
         word_normal = morph.parse(token)[0].normal_form  # Normalize each token
+        #print(f'word_normal {word_normal}; found: {word_normal in NUM_WORDS}')
         if word_normal in NUM_WORDS or token.lower() == "и":  # Check if it's part of a number
             current_chunk.append(token)  # Add token to the current numeric chunk
         else:
@@ -92,7 +93,9 @@ def convert_numbers_in_text(text, segmenter, syntax_parser, morph):
     # Replace numeric chunks in the original text
     for chunk in chunks:
         number = words_to_number(chunk.split(), morph)  # Convert chunk to a number
+        #print(f'Converted {chunk} to {number}')
+        #print(f'Replace in {result_text} {chunk} to {str(number)}')
         result_text = result_text.replace(chunk, str(number))  # Replace words with digits
-
+        #print(f'Obtained result_text {result_text}')
     return result_text  # Return the final processed text
 

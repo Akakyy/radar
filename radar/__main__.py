@@ -9,7 +9,7 @@ import click, json
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from natasha import Segmenter, MorphVocab, NewsEmbedding, NewsSyntaxParser, Doc
-import pymorphy2
+import pymorphy3
 
 from radar.Radar import Radar
 
@@ -49,7 +49,7 @@ def prepare_NER_parser():
     syntax_parser = NewsSyntaxParser(emb)  # Parses syntax tree
 
     # Initialize morphological analyzer
-    morph = pymorphy2.MorphAnalyzer()
+    morph = pymorphy3.MorphAnalyzer()
     
     return segmenter, syntax_parser, morph
     
