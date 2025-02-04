@@ -59,10 +59,16 @@ class Sector:
         self.border_color = (0.6, 0.6, 0.6, 0.8)  # Slightly darker border
         self.center_radius = 0.3  # Radius of the central red circle
         self.max_distance_km = max_distance_km
+        self.creation_time = time.time()  # Track when sector was created
+        self.lifetime = 2.0  # Sector active duration (seconds)
         
         # Define the distance circles scale
         self.distance_circles = distance_circles
         
+    # Optional method to check if sector is still active
+    def is_active(self):
+        return (time.time() - self.creation_time) < self.lifetime
+    
     def get_scaled_distance(self):
         """
         Convert kilometers to scaled distance based on predefined distance circles.
@@ -127,6 +133,20 @@ class Sector:
         glEnd()
 
 
+@dataclass
+class SectorEffect:
+    """
+    Track sector effects on polygons
+    """
+    sector_angle: float
+    sector_distance: float
+    creation_time: float = field(default_factory=math.time)
+    lifetime: float = 2.0  # Default lifetime of 2 seconds
+    
+    def is_active(self) -> bool:
+        """Check if the sector effect is still active"""
+        return (math.time() - self.creation_time) < self.lifetime
+        
      
 class PolygonManager:
     def __init__(self):
@@ -152,12 +172,31 @@ class PolygonManager:
                 return True
         return False
         
+        
     def add_polygon(self, polygon):
         # Randomly select a polygon type
         self.polygons.append(polygon)
         self.next_number += 1
 
+
+    def split_polygon(self, polygon_id, new_vertices_list):
+        """
+        Replace an existing polygon with new polygons after splitting
+        """
+        # Remove original polygon
+        self.remove_polygon(polygon_id)
         
+        # Add new polygons
+        for vertices in new_vertices_list:
+            new_polygon = Polygon(
+                id=self.next_number, 
+                vertices=vertices, 
+                type=polygon.type  # Preserve original polygon type
+            )
+            self.add_polygon(new_polygon)
+            self.next_number += 1
+            
+
     def get_polygons(self) -> List[Polygon]:
         return self.polygons
 

@@ -487,29 +487,33 @@ class Radar:
         self.draw_polygons()
         
     def draw_polygons(self):
+        sector_effects = []
+        for sector in self.polygon_manager.get_sectors():
+            sector_effect = SectorEffect(
+                sector_angle=sector.angle,
+                sector_distance=sector.get_scaled_distance()
+            )
+            sector_effects.append(sector_effect)
+        
+        # Apply sector effects to polygons
+        apply_sector_effects(self.polygon_manager, sector_effects)
+        
+        # Rest of your existing draw_polygons method remains the same
         for polygon in self.polygon_manager.get_polygons():
             self.draw_polygon(polygon)
-        
+            
             # Calculate the centroid of the polygon for positioning the text
             centroid_x = sum(vertex[0] for vertex in polygon.vertices) / len(polygon.vertices)
             centroid_y = sum(vertex[1] for vertex in polygon.vertices) / len(polygon.vertices)
-
+            
             # Render the polygon ID near the centroid
             glColor3f(0.5, 0.5, 0.5)  # Set color to grey for the ID text
             self.render_text(str(polygon.id), centroid_x, centroid_y)
         
-        # Then draw all sectors
+        # Draw all sectors
         for sector in self.polygon_manager.get_sectors():
-            # Calculate position for text (top right corner of sector)
-            #text_angle = math.radians(sector.angle + sector.width/4)  # Position text slightly right of center
-            #text_distance = sector.distance * 0.9  # Position text at 90% of the sector's radius
-            #text_x = text_distance * math.cos(text_angle)
-            #text_y = text_distance * math.sin(text_angle)
-            
-            # Render sector ID text
-            #self.render_text(str(sector.id), text_x, text_y)
             sector.draw()
-            
+    
 
     def remove_polygon_by_id(self, polygon_id: int):
         self.polygon_manager.remove_polygon(polygon_id)
@@ -630,6 +634,20 @@ class Radar:
         glColor3f(0.0, 1.0, 0.0)
         self.render_text(f"{distance} km", label_x, label_y)
  
+    def process_sector_effects(self):
+        """
+        Apply sector effects to polygons during drawing or update
+        """
+        for sector in self.polygon_manager.get_sectors():
+            if not sector.is_active():
+                # Find intersecting polygons
+                for polygon in self.polygon_manager.get_polygons():
+                    split_vertices = split_polygon_by_sector(polygon.vertices, sector)
+                    
+                    # If splitting occurred
+                    if len(split_vertices) > 1:
+                        self.polygon_manager.split_polygon(polygon.id, split_vertices)
+                    
     # Update the draw_polygon function to use the polygon's color
     def draw_polygon(self, polygon: Polygon):
         """Draw a filled polygon with soft edges and enhanced radar noise effect."""
@@ -725,4 +743,166 @@ def draw_gradient_circle(x: float, y: float, radius: float, alpha: float, color:
         py = y + radius * math.sin(angle)
         glVertex2f(px, py)
     glEnd()
+
+
+def point_in_sector(point: Tuple[float, float], sector_angle: float, sector_distance: float) -> bool:
+    """
+    Check if a point is inside a sector.
+    
+    Args:
+        point: (x, y) coordinates of the point
+        sector_angle: Angular width of the sector
+        sector_distance: Radius of the sector
+    
+    Returns:
+        Boolean indicating if point is in sector
+    """
+    # Calculate distance from center (origin)
+    x, y = point
+    distance = math.sqrt(x*x + y*y)
+    
+    # Check radius constraint
+    if distance > sector_distance:
+        return False
+    
+    # Calculate angle of the point
+    point_angle = math.degrees(math.atan2(y, x))
+    
+    # Normalize angles
+    if point_angle < 0:
+        point_angle += 360
+    
+    # Calculate sector's start and end angles
+    start_angle = 90  # As defined in sector's draw method
+    end_angle = start_angle - sector_angle
+    
+    # Normalize end angle
+    if end_angle < 0:
+        end_angle += 360
+    
+    # Check angle constraint
+    if start_angle <= end_angle:
+        return start_angle <= point_angle <= end_angle
+    else:
+        # Sector crosses 0/360 degree boundary
+        return point_angle >= start_angle or point_angle <= end_angle
+        
+
+def split_polygon_by_sector(polygon_vertices: List[Tuple[float, float]], 
+                             sector_angle: float, 
+                             sector_distance: float) -> List[List[Tuple[float, float]]]:
+    """
+    Split a polygon based on sector intersection.
+    
+    Args:
+        polygon_vertices: List of polygon vertices
+        sector_angle: Angular width of the sector
+        sector_distance: Radius of the sector
+    
+    Returns:
+        List of polygon parts after splitting
+    """
+    # Find which vertices are inside the sector
+    inside_points = []
+    
+    for vertex in polygon_vertices:
+        # Determine if vertex is inside sector
+        is_inside = point_in_sector(vertex, sector_angle, sector_distance)
+        inside_points.append(is_inside)
+    
+    # If all points are in or out, return original polygon
+    if all(inside_points) or not any(inside_points):
+        return [polygon_vertices]
+    
+    # Split the polygon
+    split_polygons = []
+    current_polygon = []
+    
+    # Cycle through vertices twice to handle wrap-around
+    extended_vertices = polygon_vertices + [polygon_vertices[0]]
+    extended_inside_points = inside_points + [inside_points[0]]
+    
+    current_state = extended_inside_points[0]
+    
+    for i in range(len(polygon_vertices)):
+        current_vertex = extended_vertices[i]
+        current_inside = extended_inside_points[i]
+        next_vertex = extended_vertices[i+1]
+        next_inside = extended_inside_points[i+1]
+        
+        current_polygon.append(current_vertex)
+        
+        # Check for state change
+        if current_inside != next_inside:
+            # State has changed, potentially start a new polygon
+            if current_polygon:
+                split_polygons.append(current_polygon)
+                current_polygon = [current_vertex]
+    
+    # Add last polygon if not empty
+    if current_polygon:
+        split_polygons.append(current_polygon)
+    
+    return split_polygons
+ 
+ 
+def apply_sector_effects(polygon_manager, sector_effects: List[SectorEffect]):
+    """
+    Apply sector effects to polygons
+    
+    Args:
+        polygon_manager: PolygonManager instance
+        sector_effects: List of active sector effects
+    """
+    # Get current polygons
+    polygons = polygon_manager.get_polygons()
+    
+    # Temporary storage for new polygons
+    polygons_to_remove = []
+    polygons_to_add = []
+    
+    # Process each polygon against all active sector effects
+    for polygon in polygons:
+        modified_polygon = False
+        
+        for sector_effect in sector_effects:
+            # Skip inactive sector effects
+            if not sector_effect.is_active():
+                continue
+            
+            # Try to split the polygon
+            split_polygons = split_polygon_by_sector(
+                polygon.vertices, 
+                sector_effect.sector_angle, 
+                sector_effect.sector_distance
+            )
+            
+            # If polygon was split
+            if len(split_polygons) > 1:
+                modified_polygon = True
+                
+                # Remove original polygon
+                polygons_to_remove.append(polygon)
+                
+                # Create new polygons
+                for split_vertices in split_polygons:
+                    new_polygon = Polygon(
+                        id=polygon_manager.next_number, 
+                        vertices=split_vertices, 
+                        type=polygon.type
+                    )
+                    polygons_to_add.append(new_polygon)
+                    polygon_manager.next_number += 1
+        
+        # If no modification occurred, keep the original polygon
+        if not modified_polygon:
+            continue
+    
+    # Remove split polygons
+    for polygon in polygons_to_remove:
+        polygon_manager.remove_polygon(polygon.id)
+    
+    # Add new polygons
+    for polygon in polygons_to_add:
+        polygon_manager.add_polygon(polygon)
 
