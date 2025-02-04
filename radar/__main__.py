@@ -8,6 +8,8 @@ from pathlib import Path
 import click, json
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from natasha import Segmenter, MorphVocab, NewsEmbedding, NewsSyntaxParser, Doc
+import pymorphy3
 
 from radar.Radar import Radar
 
@@ -39,6 +41,19 @@ def load_model(model_path):
     return model, processor, pipe
 
 
+def prepare_NER_parser():
+    # Initialize Natasha tools
+    segmenter = Segmenter()  # Splits text into tokens and sentences
+    morph_vocab = MorphVocab()  # Helps normalize token forms
+    emb = NewsEmbedding()  # Pre-trained embeddings for Russian
+    syntax_parser = NewsSyntaxParser(emb)  # Parses syntax tree
+
+    # Initialize morphological analyzer
+    morph = pymorphy3.MorphAnalyzer()
+    
+    return segmenter, syntax_parser, morph
+    
+ 
 @click.command()
 @click.option('--config', required=True, type=Path, default="config.json", help='Directory containing config for running model and other params.')
 def main(config: Path):
@@ -52,7 +67,8 @@ def main(config: Path):
             dir_to_save_wav = config_json['dir_to_save_wav']
             model, preprocessor, pipe = load_model(models_dir)
             print('Model loaded successfully')
-            radar = Radar(dir_to_save_wav, pipe)
+            segmenter, syntax_parser, morph = prepare_NER_parser()
+            radar = Radar(dir_to_save_wav, pipe, segmenter, syntax_parser, morph)
             radar.run()
     except Exception as e:
         #print(str(e))

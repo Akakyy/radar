@@ -12,9 +12,10 @@ from radar.AlgorithmRecognition import AlgorithmRecognizer
 
 
 class Radar:
-    def __init__(self, dir_to_save_wav, pipe, width=800, height=800):
+    def __init__(self, dir_to_save_wav, pipe, segmenter, syntax_parser, morph, width=800, height=800):
         self.dir_to_save_wav = dir_to_save_wav
         self.pipe = pipe
+        self.algorithm_reconizer = AlgorithmRecognizer(self, segmenter, syntax_parser, morph)
         self.border_radius = 1.9  # максимальный радиус в радарных единицах
         self.max_distance_km = 30  # максимальная дистанция в км
         self.distance_circles = [
@@ -66,10 +67,10 @@ class Radar:
         self.show_trajectory_ids: Set[int] = set()
 
         
-    def create_sector(self, distance_km: float, angle: float, type: str):
+    def create_sector(self, distance_km: float, angle: float, type_sector: str):
         """Создает сектор, принимая расстояние в километрах"""
         #radar_distance = self.km_to_radar_units(distance_km, )
-        return self.polygon_manager.create_sector(distance_km, angle, type, self.max_distance_km, self.distance_circles)
+        return self.polygon_manager.create_sector(distance_km, angle, type_sector, self.max_distance_km, self.distance_circles)
         
         
     def get_distance_from_center(self, x: float, y: float) -> float:
@@ -407,7 +408,30 @@ class Radar:
             glVertex2f(x, y)
         
         glEnd()
-
+        
+    def draw_sweep_line_anti_clock_wise(self):
+        glBegin(GL_LINES)
+        glColor4f(0.0, 1.0, 0.0, 1.0)
+        glVertex2f(0, 0)
+        
+        # Calculate the endpoint of the sweep line
+        x = self.border_radius * math.cos(math.radians(self.angle))
+        y = self.border_radius * math.sin(math.radians(self.angle))
+        glVertex2f(x, y)
+        glEnd()
+        
+        glBegin(GL_TRIANGLE_FAN)
+        glColor4f(0.0, 0.5, 0.0, 0.15)
+        glVertex2f(0, 0)
+        
+        # Iterate from self.angle - 75 degrees up to self.angle + 1 degrees
+        for deg in range(int(self.angle - 75), int(self.angle + 1)):  # Changed to +1 step for counter-clockwise
+            rad = math.radians(deg)
+            x = self.border_radius * math.cos(rad)
+            y = self.border_radius * math.sin(rad)
+            glVertex2f(x, y)
+        
+        glEnd()
     def radar_units_to_distance(self, units: float) -> float:
         """Convert radar units to real distance (km)"""
         return (units * 30) / self.border_radius
@@ -458,7 +482,7 @@ class Radar:
         glEnd()
         
         self.draw_central_area()
-        self.draw_sweep_line()
+        self.draw_sweep_line_anti_clock_wise()
         self.draw_moving_objects()
         self.draw_polygons()
         
@@ -497,8 +521,8 @@ class Radar:
         #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
         #self.polygon_manager.create_sector(random.uniform(5, 25), random.uniform(0, 360), random.choice(PolygonType.__args__))
         # Create some test sectors
-        self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
-        self.create_sector(28, 87, "wind")  # At 135 degrees
+        #self.create_sector(10, 45, "signal_rejection")  # At 45 degrees
+        #self.create_sector(28, 87, "wind")  # At 135 degrees
         audio_recorder = AudioRecorder(self.dir_to_save_wav)
         
         while True:
@@ -538,8 +562,7 @@ class Radar:
                             filename = audio_recorder.stop_recording()
                             text = self.pipe(str(filename), generate_kwargs={"language": "russian"})
                             print(f'Recognized string: {text}')
-                            algorithm_reconizer = AlgorithmRecognizer(self)
-                            algorithm_reconizer.recognize(text['text'].lower())
+                            self.algorithm_reconizer.recognize(text['text'].lower())
                         except Exception as e:
                             traceback.print_exc()
                             continue
@@ -548,7 +571,8 @@ class Radar:
                         
             self.update_objects()
             self.draw()
-            self.angle = (self.angle + self.radar_speed) % 360
+            #self.angle = (self.angle + self.radar_speed) % 360
+            self.angle = (self.angle - self.radar_speed) % 360
             self.draw_polygons()
 
             pygame.display.flip()

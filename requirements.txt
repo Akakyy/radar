@@ -11,5 +11,5 @@ accelerate
 tokenizers
 click
 spacy
-words2numsrus
-flash-attn
+natasha
+pymorphy3 @ git+https://github.com/no-plagiarism/pymorphy3@master

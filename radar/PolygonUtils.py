@@ -5,8 +5,9 @@ from OpenGL.GL import *  # Add this import at the top
 
 
 PolygonType = Literal[
-    'signal_rejection',
-    'wind',
+    'реджекция',
+    'реджекции',
+    'ветер',
     'sco_signal',
     'mfd',
     'bkp',
@@ -26,8 +27,9 @@ class Polygon:
     def __post_init__(self):
         # Define colors for different types
         type_colors = {
-            'signal_rejection': (1.0, 0.0, 0.0),    # Red
-            'wind': (0.0, 0.0, 1.0),               # Blue
+            'реджекция': (1.0, 0.0, 0.0),    # Red
+            'реджекции': (1.0, 0.0, 0.0),    # Red
+            'ветер': (0.0, 0.0, 1.0),               # Blue
             'sco_signal': (0.0, 1.0, 0.0),         # Green
             'mfd': (1.0, 1.0, 0.0),                # Yellow
             'bkp': (1.0, 0.5, 0.0),                # Orange
@@ -39,7 +41,8 @@ class Polygon:
 
 
 class Sector:
-    def __init__(self, id: int, distance: float, angle: float, type: str, max_distance_km: float, distance_circles):
+    default_color: Tuple[float, float, float, float] = (0.8, 0.8, 0.8, 0.3)  # Light grey default color
+    def __init__(self, id: int, distance: float, angle: float, sector_type: str, max_distance_km: float, distance_circles):
         """
         Initialize a sector with given parameters
         
@@ -47,15 +50,29 @@ class Sector:
             id: Unique identifier for the sector
             distance: The distance (in km) based on radius
             angle: Central angle of the sector (in degrees)
-            type: Type of the sector
+            sector_type: Type of the sector
             max_distance_km: The maximum distance in kilometers
         """
         self.id = id
+        self.type_colors = {
+            'реджекция': (1.0, 0.0, 0.0, 0.3),    # Red
+            'реджекции': (1.0, 0.0, 0.0, 0.3),    # Red
+            'ветер': (0.0, 0.0, 1.0, 0.3),               # Blue
+            'sco_signal': (0.0, 1.0, 0.0, 0.3),         # Green
+            'mfd': (1.0, 1.0, 0.0, 0.3),                # Yellow
+            'bkp': (1.0, 0.5, 0.0, 0.3),                # Orange
+            'ppz': (0.5, 0.0, 0.5, 0.3),                # Purple
+            'pbl': (0.0, 1.0, 1.0, 0.3),                # Cyan
+            'varu': (1.0, 0.0, 1.0, 0.3)                # Magenta
+        }
+        
         self.distance = distance  # Distance in kilometers
         self.angle = angle  # Central angle of the sector
-        self.type = type
+        self.sector_type = sector_type
         self.width = 35  # Width of sector in degrees
-        self.fill_color = (0.8, 0.8, 0.8, 0.3)  # RGBA
+        #self.fill_color = (0.8, 0.8, 0.8, 0.3)  # RGBA
+        
+        self.fill_color = self.type_colors.get(self.sector_type, self.default_color)
         self.border_color = (0.6, 0.6, 0.6, 0.8)  # Slightly darker border
         self.center_radius = 0.3  # Radius of the central red circle
         self.max_distance_km = max_distance_km
@@ -96,7 +113,6 @@ class Sector:
     def draw(self):
         # Получаем корректированное расстояние в км
         distance = self.get_scaled_distance()
-
         # Устанавливаем начальный и конечный угол
         start_angle = 90  # Начинаем с вертикальной линии сверху
         end_angle = start_angle - self.angle  # Уменьшаем угол для поворота против часовой стрелки
@@ -135,8 +151,9 @@ class PolygonManager:
         self.next_sector_number = 0
         self.sectors: List[Sector] = []
         self.polygon_types: List[PolygonType] = [
-            'signal_rejection',
-            'wind',
+            'реджекция',
+            'реджекции',
+            'ветер',
             'sco_signal',
             'mfd',
             'bkp',
@@ -162,7 +179,7 @@ class PolygonManager:
         return self.polygons
 
     
-    def create_sector(self, distance_km, angle, type, max_distance_km, distance_circles) -> Sector:
+    def create_sector(self, distance_km, angle, type_sector, max_distance_km, distance_circles) -> Sector:
         """
         Create a new sector and add it to the manager
         
@@ -175,7 +192,7 @@ class PolygonManager:
             Sector: The newly created sector
         """
         # Create new sector with unique ID
-        sector = Sector(self.next_sector_number, distance_km, angle, type, max_distance_km, distance_circles)
+        sector = Sector(self.next_sector_number, distance_km, angle, type_sector, max_distance_km, distance_circles)
         self.sectors.append(sector)
         self.next_sector_number += 1
         return sector
